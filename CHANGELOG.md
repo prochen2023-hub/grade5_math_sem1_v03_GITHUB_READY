@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.1 — v0.3 功能修正版
+
+### Fixed
+- 補回 v0.3 打包時遺漏的 `mainLab()` 與 `miniLab()`，修復章節內容空白與互動按鈕失效。
+- 增加 lab / mini 映射完整性檢查與 inline handler 定義檢查。
+- 加入啟動錯誤提示，避免 JavaScript 初始化失敗時無訊息空白。
+- 資源 URL 加入版本參數，降低部署後讀到舊快取的機率。
+
+### CI
+- 新增 `scripts/smoke_test.js`，逐章執行渲染測試；10 章任何一章無法生成主要內容都會阻止 GitHub Pages 部署。
+
 ## v0.3 — 逐章教學深化版
 
 ### Added

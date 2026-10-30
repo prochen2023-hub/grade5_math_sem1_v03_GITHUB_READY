@@ -24,7 +24,7 @@ units=load_json('data/units.json') or []
 bank=load_json('data/practice.json') or {}
 if len(units)!=10: errors.append(f'units.json: 預期 10 章，實際 {len(units)}')
 seen=set()
-required=('id','title','hook','draw_first','goals','keywords','story','mission','pitfall','why','say','badge','task','warmup','worked','error_clinic','memory','challenge')
+required=('id','title','hook','draw_first','goals','keywords','story','mission','pitfall','why','say','badge','task','warmup','worked','error_clinic','memory','challenge','lab','mini')
 for u in units:
     uid=u.get('id','?')
     for k in required:
@@ -47,6 +47,21 @@ for u in units:
         if q.get('type') not in ('life','concept'): errors.append(f'{qid}: type 不合法')
         opts=q.get('options',[]); ans=q.get('answer')
         if not isinstance(ans,int) or not isinstance(opts,list) or not (0 <= ans < len(opts)): errors.append(f'{qid}: answer 超出範圍')
+
+# Interactive lab routing and inline handler coverage.
+app=(ROOT/'assets/js/app.js').read_text(encoding='utf-8')
+main_labs={'decimal','factors','multiples','fraction_equiv','polygon','fraction_add','symmetry','operations','area','solids'}
+mini_labs={'decimal_compare','gcf','lcm','common_den','sector','fraction_strip','mirror_point','distributive','triangle_area','net'}
+for u in units:
+    uid=u.get('id','?')
+    if u.get('lab') not in main_labs: errors.append(f"{uid}: lab 未對應互動圖 {u.get('lab')}")
+    if u.get('mini') not in mini_labs: errors.append(f"{uid}: mini 未對應小實驗 {u.get('mini')}")
+for fn in ('mainLab','miniLab'):
+    if not re.search(rf'function\s+{fn}\s*\(',app): errors.append(f'app.js: 缺少必要函式 {fn}()')
+handlers=set(re.findall(r'on(?:click|input)=\"([A-Za-z_$][\w$]*)\s*\(',app))
+for fn in sorted(handlers):
+    declared=(re.search(rf'function\s+{re.escape(fn)}\s*\(',app) or re.search(rf'window\.{re.escape(fn)}\s*=',app))
+    if not declared: errors.append(f'app.js: inline handler {fn}() 沒有定義')
 
 # Local HTML refs: ignore anchors, mailto, http(s), inline JS.
 for rel in ('index.html','math.html','admin-progress.html','404.html'):

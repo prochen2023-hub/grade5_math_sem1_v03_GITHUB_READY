@@ -1,6 +1,16 @@
-# 國小五年級上學期數學｜v0.3
+# 國小五年級上學期數學｜v0.3.1
 
-**逐章教學深化版**。這是一個可直接部署到 GitHub Pages 的純前端互動數學網站。v0.3 的核心不是再堆更多題目，而是把每章變成一條孩子能自己走完的學習路徑：**先診斷 → 看懂圖 → 跟著做 → 找錯因 → 解生活題 → 修錯 → 挑戰**。
+**逐章教學深化版（v0.3.1 修正版）**。這是一個可直接部署到 GitHub Pages 的純前端互動數學網站。v0.3 的核心不是再堆更多題目，而是把每章變成一條孩子能自己走完的學習路徑：**先診斷 → 看懂圖 → 跟著做 → 找錯因 → 解生活題 → 修錯 → 挑戰**。
+
+
+## v0.3.1 修正重點
+
+- 修復 v0.3 遺漏 `mainLab()` / `miniLab()` 路由函式，造成章節主內容空白、按鈕無法作用的重大問題。
+- 10 章互動圖與小實驗全部重新建立對應。
+- 新增 `scripts/smoke_test.js`：會實際執行 `app.js` 並逐章確認主內容、生活任務、錯誤診療室、Boss 題與 10 題練習均成功渲染。
+- GitHub Actions 部署前現在同時執行 Python 資料驗證與 Node 互動渲染 smoke test。
+- 新增啟動錯誤畫面；未來即使資料或程式載入失敗，也不再只留下空白頁。
+- 靜態資源加入 `?v=0.3.1`，降低 GitHub Pages/瀏覽器沿用舊版 JS 快取的機率。
 
 ## v0.3 核心改動
 
@@ -73,7 +83,7 @@ python -m http.server 8000
 4. GitHub → **Settings → Pages → Build and deployment → Source** 選 **GitHub Actions**。
 5. workflow 完成後即可取得 Pages 網址。
 
-詳細步驟見 [`docs/GITHUB_PAGES.md`](docs/GITHUB_PAGES.md)。部署 workflow 會先執行 `python scripts/validate_project.py`，驗證通過才發布。
+詳細步驟見 [`docs/GITHUB_PAGES.md`](docs/GITHUB_PAGES.md)。部署 workflow 會先執行 `python scripts/validate_project.py`，再執行 `node scripts/smoke_test.js`；兩者都通過才發布。
 
 ## 進度與隱私
 

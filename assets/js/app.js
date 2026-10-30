@@ -2,7 +2,12 @@ const $=id=>document.getElementById(id);
 let UNITS=[],BANK={},current="u01",showFull=false,practiceFilter="all",progress={};
 const DEFAULT_PROGRESS={completed:{},correct:{},attempts:{},mistakes:{},challenge:{},xp:0,lastUnit:"u01",combo:0,comboBest:0,lifeCorrect:0,fixedMistakes:0,hintsUsed:0,daily:{date:"",correct:0,units:0}};
 async function getJSON(p){const r=await fetch(p);if(!r.ok)throw new Error(p);return r.json()}
-document.addEventListener("DOMContentLoaded",init);
+document.addEventListener("DOMContentLoaded",()=>init().catch(showBootError));
+function showBootError(err){
+ console.error(err);
+ const main=document.getElementById("main");
+ if(main)main.innerHTML=`<section class="questCard"><h2>⚠️ 內容載入失敗</h2><p>請重新整理頁面；若仍無法顯示，請確認 data 與 assets 檔案已完整上傳。</p><small>${String(err?.message||err)}</small></section>`;
+}
 
 function todayKey(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
 function normalizeProgress(p={}){
@@ -16,6 +21,7 @@ function normalizeProgress(p={}){
 async function init(){
  [UNITS,BANK]=await Promise.all([getJSON("data/units.json"),getJSON("data/practice.json")]);
  G5Account.boot({promptIfMissing:false});progress=normalizeProgress(G5Account.progress());current=progress.lastUnit||"u01";
+ if(!UNITS.some(u=>u.id===current))current=UNITS[0]?.id||"u01";
  renderNav();selectUnit(current,false);bindShell();renderRewards()
 }
 function bindShell(){
@@ -161,6 +167,24 @@ function checkPractice(id,ans,btn){
  if(ans===q.answer){const hadWrong=(progress.mistakes[id]||0)>0;progress.correct[id]=true;if(hadWrong)progress.fixedMistakes=(progress.fixedMistakes||0)+1;const bonus=rewardCorrect(8,{life:q.type==='life'});fb.className="goodText";fb.textContent=`✓ ${q.explain} +8 XP${bonus?`＋連勝 ${bonus} XP`:""}${hadWrong?"　🩹 錯題修復成功！":""}`;btn.parentElement.querySelectorAll("button").forEach(b=>b.disabled=true);showRewardToast(hadWrong?`🩹 修復成功！+${8+bonus} XP`:`⭐ 答對！+${8+bonus} XP`)
  }else{progress.mistakes[id]=(progress.mistakes[id]||0)+1;rewardWrong();fb.className="badText";fb.textContent=`先不要抄正解。${q.wrong_tip||"重新找出題目要你求什麼。"} 可以按「提示」再想一次。`}
  save();renderNav()
+}
+
+/* ---------- lab routers ---------- */
+function mainLab(type){
+ const labs={
+  decimal:decimalLab,factors:factorsLab,multiples:multiplesLab,fraction_equiv:fractionEqLab,polygon:polygonLab,
+  fraction_add:fractionAddLab,symmetry:symmetryLab,operations:operationsLab,area:areaLab,solids:solidsLab
+ };
+ const fn=labs[type];
+ return fn?fn():`<div class="labError">⚠️ 找不到互動圖：${type||"未設定"}</div>`
+}
+function miniLab(type){
+ const labs={
+  decimal_compare:decimalCompare,gcf:gcfLab,lcm:lcmLab,common_den:commonDenLab,sector:sectorLab,
+  fraction_strip:fractionStripLab,mirror_point:mirrorPointLab,distributive:distributeLab,triangle_area:triangleAreaLab,net:netLab
+ };
+ const fn=labs[type];
+ return fn?fn():`<div class="labError">⚠️ 找不到小實驗：${type||"未設定"}</div>`
 }
 
 /* ---------- labs ---------- */
