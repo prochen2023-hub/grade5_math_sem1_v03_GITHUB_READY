@@ -15,10 +15,13 @@
 
 ## 提交前檢查
 
-v0.3 起請先在 repository root 執行：
+v0.4 起請先在 repository root 執行：
 
 ```bash
 python scripts/validate_project.py
+node scripts/smoke_test.js
+node scripts/interaction_test.js
+node --check assets/js/app.js
 ```
 
-驗證會檢查章節與題目必要欄位、答案索引、題目 ID、生活題比例與本機 HTML 連結。GitHub Pages workflow 在部署前也會自動執行同一項檢查。
+驗證會檢查章節與題目必要欄位、答案索引、題目 ID、生活題比例與本機 HTML 連結。GitHub Pages workflow 在部署前也會自動執行內容驗證、10 章渲染 smoke test 與 v0.4 圖解邏輯測試。

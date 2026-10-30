@@ -63,6 +63,18 @@ for fn in sorted(handlers):
     declared=(re.search(rf'function\s+{re.escape(fn)}\s*\(',app) or re.search(rf'window\.{re.escape(fn)}\s*=',app))
     if not declared: errors.append(f'app.js: inline handler {fn}() 沒有定義')
 
+
+# Version consistency.
+try:
+    version=(ROOT/'VERSION').read_text(encoding='utf-8').strip()
+    cfg=load_json('data/config.json') or {}
+    if cfg.get('version') != version: errors.append(f"VERSION {version} 與 config.json {cfg.get('version')} 不一致")
+    for rel in ('index.html','math.html','admin-progress.html'):
+        if version not in (ROOT/rel).read_text(encoding='utf-8'):
+            errors.append(f'{rel}: 未顯示目前版本 {version}')
+except Exception as e:
+    errors.append(f'版本檢查失敗: {e}')
+
 # Local HTML refs: ignore anchors, mailto, http(s), inline JS.
 for rel in ('index.html','math.html','admin-progress.html','404.html'):
     text=(ROOT/rel).read_text(encoding='utf-8')
