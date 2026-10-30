@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#4b73df">
+  <meta name="description" content="國小五年級上學期數學互動學習網站：圖像理解、生活活用題、XP、星星、徽章與闖關。">
+  <title>五年級上學期數學冒險 0.3</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/img/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><button class="menuBtn" id="menuBtn" aria-label="開啟章節選單">☰</button><div class="brandMark">5</div><div><b>五上數學 0.3</b><small>診斷・圖解・錯題修復・生活活用</small></div></div>
+  <div class="topActions"><span class="topReward" id="topReward">Lv.1・0 XP・0⭐</span><button id="accountBtn"><span data-account-name>登入</span></button><a href="admin-progress.html">版主進度</a><a href="index.html">首頁</a></div>
+</header>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="progressCard"><div class="progressTop"><b>本學期進度</b><span id="courseProgress">0/10</span></div><div class="bar"><i id="courseBar"></i></div></div>
+    <section class="rewardCard">
+      <div class="rewardHead"><div><b id="rewardLevel">Lv.1</b><small id="rewardXp">0 XP</small></div><strong id="rewardStars">0 ⭐</strong></div>
+      <div class="bar xp"><i id="xpBar"></i></div><small id="xpNext">距離 Lv.2 還要 100 XP</small>
+      <div class="dailyBox"><b>🎯 今日挑戰</b><span id="dailyText">完成 0/1 章・答對 0/3 題</span><div class="bar daily"><i id="dailyBar"></i></div></div>
+      <div class="rewardRow"><span>最佳連勝</span><b id="rewardCombo">🔥 0</b></div><div class="mistakeQuick"><span>待修錯題</span><b id="rewardMistakes">🩹 0</b></div><div class="badgeMini" id="badgeMini"></div>
+    </section>
+    <nav class="unitNav" id="unitNav"></nav>
+  </aside>
+  <main class="content"><header class="unitHeader"><h1 id="unitTitle"></h1><p id="unitSub"></p></header><div id="main"></div></main>
+</div>
+<script src="assets/js/account.js"></script><script src="assets/js/voice.js"></script><script src="assets/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "五年級數學冒險｜上學期",
+  "short_name": "五上數學冒險",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#4b73df",
+  "icons": [{"src":"assets/img/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}

@@ -1,0 +1,18 @@
+{
+  "project": "國小五年級上學期數學",
+  "version": "0.3",
+  "release_name": "逐章教學深化版",
+  "curriculum_note": "跨版本共通概念骨架；單元順序採常見五上架構，可後續切換康軒／翰林／南一。",
+  "progress_namespace": "g5m1",
+  "github_pages": true,
+  "content_focus": [
+    "起點診斷",
+    "圖像理解",
+    "逐步例題",
+    "錯誤診療",
+    "生活活用題",
+    "Boss挑戰",
+    "錯題修復",
+    "XP/星星/徽章/連勝"
+  ]
+}
