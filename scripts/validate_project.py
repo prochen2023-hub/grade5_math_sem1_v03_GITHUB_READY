@@ -65,6 +65,35 @@ for u in units:
         opts=q.get('options',[]); ans=q.get('answer')
         if not isinstance(ans,int) or not isinstance(opts,list) or not (0 <= ans < len(opts)): errors.append(f'{qid}: answer 超出範圍')
 
+
+# v0.8 exam data validation.
+exams=load_json('data/exams.json') or {}
+if set(exams.keys()) != {'midterm','final'}:
+    errors.append(f'exams.json: 預期 midterm/final，實際 {sorted(exams.keys())}')
+exam_ids=set()
+for cp,info in exams.items():
+    if info.get('minutes') != 40: errors.append(f'{cp}: 考試時間應為 40 分鐘')
+    papers=info.get('papers',{})
+    if set(papers.keys()) != {'A','B'}: errors.append(f'{cp}: 需有 A/B 兩卷')
+    for paper,qs in papers.items():
+        if len(qs)!=15: errors.append(f'{cp}{paper}: 預期 15 題，實際 {len(qs)}')
+        if sum(q.get('points',0) for q in qs)!=100: errors.append(f'{cp}{paper}: 配分不是 100')
+        expected={'choice':20,'fill':20,'calc':24,'application':36}
+        for typ,pts in expected.items():
+            got=sum(q.get('points',0) for q in qs if q.get('type')==typ)
+            if got!=pts: errors.append(f'{cp}{paper}: {typ} 配分 {got}，預期 {pts}')
+        for q in qs:
+            qid=q.get('id','?')
+            if qid in exam_ids: errors.append(f'考卷題號重複: {qid}')
+            exam_ids.add(qid)
+            for k in ('type','points','unit','prompt','visual','explain'):
+                if k not in q: errors.append(f'{qid}: 缺少 {k}')
+            if q.get('type')=='choice':
+                opts=q.get('options',[]);ans=q.get('answer')
+                if not isinstance(ans,int) or not (0<=ans<len(opts)): errors.append(f'{qid}: 選擇題答案無效')
+            elif not q.get('answers'):
+                errors.append(f'{qid}: 非選擇題缺少 answers')
+
 # Interactive lab routing and inline handler coverage.
 app=(ROOT/'assets/js/app.js').read_text(encoding='utf-8')
 main_labs={'decimal','factors','multiples','fraction_equiv','polygon','fraction_add','symmetry','operations','area','solids'}

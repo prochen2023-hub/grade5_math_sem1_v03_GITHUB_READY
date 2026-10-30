@@ -1,9 +1,9 @@
 const $=id=>document.getElementById(id);
-let UNITS=[],BANK={},current="u01",showFull=false,practiceFilter="all",progress={};
-let viewMode="chapter",lessonIndex=0,pendingFocus="";
+let UNITS=[],BANK={},EXAMS={},current="u01",showFull=false,practiceFilter="all",progress={};
+let viewMode="chapter",lessonIndex=0,pendingFocus="",examCheckpoint="";
 let masteryLevel="A",examSession=null,examTicker=null;
 const MASTERY_LEVELS=["A","B","C","D"];
-const DEFAULT_PROGRESS={completed:{},correct:{},attempts:{},mistakes:{},challenge:{},todayLessons:{},examAwards:{},xp:0,lastUnit:"u01",combo:0,comboBest:0,lifeCorrect:0,fixedMistakes:0,hintsUsed:0,daily:{date:"",correct:0,units:0}};
+const DEFAULT_PROGRESS={completed:{},correct:{},attempts:{},mistakes:{},challenge:{},todayLessons:{},examAwards:{},examScores:{},xp:0,lastUnit:"u01",combo:0,comboBest:0,lifeCorrect:0,fixedMistakes:0,hintsUsed:0,daily:{date:"",correct:0,units:0}};
 async function getJSON(p){const r=await fetch(p);if(!r.ok)throw new Error(p);return r.json()}
 document.addEventListener("DOMContentLoaded",()=>init().catch(showBootError));
 function showBootError(err){
@@ -15,20 +15,23 @@ function showBootError(err){
 function todayKey(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
 function normalizeProgress(p={}){
  const x={...DEFAULT_PROGRESS,...p};
- x.completed={...(p.completed||{})};x.correct={...(p.correct||{})};x.attempts={...(p.attempts||{})};x.mistakes={...(p.mistakes||{})};x.challenge={...(p.challenge||{})};x.todayLessons={...(p.todayLessons||{})};x.examAwards={...(p.examAwards||{})};
+ x.completed={...(p.completed||{})};x.correct={...(p.correct||{})};x.attempts={...(p.attempts||{})};x.mistakes={...(p.mistakes||{})};x.challenge={...(p.challenge||{})};x.todayLessons={...(p.todayLessons||{})};x.examAwards={...(p.examAwards||{})};x.examScores={...(p.examScores||{})};
  x.xp=Number(x.xp)||0;x.combo=Number(x.combo)||0;x.comboBest=Number(x.comboBest)||0;x.lifeCorrect=Number(x.lifeCorrect)||0;x.fixedMistakes=Number(x.fixedMistakes)||0;x.hintsUsed=Number(x.hintsUsed)||0;
  x.daily={date:p.daily?.date||"",correct:Number(p.daily?.correct)||0,units:Number(p.daily?.units)||0};
  if(x.daily.date!==todayKey())x.daily={date:todayKey(),correct:0,units:0};
  return x
 }
 async function init(){
- [UNITS,BANK]=await Promise.all([getJSON("data/units.json"),getJSON("data/practice.json")]);
+ [UNITS,BANK,EXAMS]=await Promise.all([getJSON("data/units.json"),getJSON("data/practice.json"),getJSON("data/exams.json")]);
  G5Account.boot({promptIfMissing:false});progress=normalizeProgress(G5Account.progress());
  const params=new URLSearchParams(window.location?.search||"");
  const requested=params.get("unit");
  current=(requested&&UNITS.some(u=>u.id===requested))?requested:(progress.lastUnit||"u01");
  if(!UNITS.some(u=>u.id===current))current=UNITS[0]?.id||"u01";
- viewMode=params.get("mode")==="today"?"today":"chapter";
+ const requestedMode=params.get("mode");
+ viewMode=requestedMode==="today"?"today":requestedMode==="exam"?"exam":"chapter";
+ examCheckpoint=(params.get("checkpoint")==="final")?"final":(viewMode==="exam"?"midterm":"");
+ if(viewMode==="exam")current=examCheckpoint==="final"?"u10":"u05";
  lessonIndex=Math.max(0,Number(params.get("lesson")||0)||0);
  pendingFocus=params.get("focus")||"";
  renderNav();renderUnit();bindShell();renderRewards();applyPendingFocus()
@@ -40,13 +43,20 @@ function bindShell(){
 }
 function save(){progress.lastUnit=current;G5Account.saveProgress(progress);renderRewards()}
 function selectUnit(id,scroll=true,mode="chapter"){
- G5Voice?.stop?.();current=id;viewMode=mode;lessonIndex=0;progress.lastUnit=id;save();showFull=false;practiceFilter="all";masteryLevel="A";stopExamClock();examSession=null;
+ G5Voice?.stop?.();current=id;viewMode=mode;examCheckpoint="";lessonIndex=0;progress.lastUnit=id;save();showFull=false;practiceFilter="all";masteryLevel="A";stopExamClock();examSession=null;
  renderNav();renderUnit();syncRoute();if(scroll)window.scrollTo({top:0,behavior:"smooth"});document.body.classList.remove("menuOpen")
+}
+function selectCheckpoint(cp,scroll=true){
+ G5Voice?.stop?.();examCheckpoint=cp==="final"?"final":"midterm";viewMode="exam";current=examCheckpoint==="final"?"u10":"u05";showFull=false;stopExamClock();examSession=null;renderNav();renderUnit();syncRoute();if(scroll)window.scrollTo({top:0,behavior:"smooth"});document.body.classList.remove("menuOpen")
 }
 function doneCount(){return Object.values(progress.completed).filter(Boolean).length}
 function unitCorrect(uid){return Object.keys(progress.correct).filter(k=>k.startsWith(uid+"_")&&progress.correct[k]).length}
 function unitStars(uid){if(!progress.completed[uid])return 0;const n=unitCorrect(uid);return 1+(n>=3?1:0)+(n>=6?1:0)}
 function totalStars(){return UNITS.reduce((s,u)=>s+unitStars(u.id),0)}
+function examRecord(cp,paper){const r=progress.examScores?.[`${cp}_${paper}`];return (r&&typeof r==="object")?r:{best:Number(r)||0,last:Number(r)||0,attempts:0}}
+function examCheckpointDone(cp){return ["A","B"].some(p=>examRecord(cp,p).attempts>0)}
+function examBossStars(){return ["midterm_A","midterm_B","final_A","final_B"].filter(k=>{const r=progress.examScores?.[k];return (r&&typeof r==="object"?Number(r.best):Number(r)||0)>=80}).length}
+function journeyDone(){return doneCount()+(examCheckpointDone("midterm")?1:0)+(examCheckpointDone("final")?1:0)}
 function level(){return Math.floor(progress.xp/100)+1}
 function unresolvedMistakes(uid=null){
  const ids=Object.keys(progress.mistakes||{}).filter(id=>(!uid||id.startsWith(uid+"_"))&&!progress.correct[id]&&progress.mistakes[id]>0);return ids.length
@@ -62,17 +72,19 @@ function badgeStates(){
   {emoji:"🩹",name:"錯題修復師",ok:progress.fixedMistakes>=3,tip:"把 3 題曾答錯的題目修正答對"},
   {emoji:"👑",name:"Boss 挑戰者",ok:Object.keys(progress.challenge||{}).filter(k=>progress.challenge[k]).length>=3,tip:"完成 3 章 Boss 挑戰"},
   {emoji:"🚩",name:"半程勇者",ok:done>=5,tip:"完成 5 章"},
+  {emoji:"👑",name:"期中魔王",ok:["A","B"].every(p=>examRecord("midterm",p).best>=80),tip:"期中 A、B 卷都達 80 分"},
+  {emoji:"🏰",name:"期末魔王",ok:["A","B"].every(p=>examRecord("final",p).best>=80),tip:"期末 A、B 卷都達 80 分"},
   {emoji:"⭐",name:"星星收藏家",ok:stars>=20,tip:"累積 20 顆星"},
-  {emoji:"🏆",name:"五上全破",ok:done>=UNITS.length&&UNITS.length>0,tip:"完成全部章節"}
+  {emoji:"🏆",name:"12站全破",ok:journeyDone()>=12,tip:"完成 10 章＋期中＋期末檢核"}
  ]
 }
 function renderRewards(){
- const d=doneCount(),stars=totalStars(),lv=level(),next=lv*100;
- if($("courseProgress"))$("courseProgress").textContent=`${d}/${UNITS.length||10}`;
- if($("courseBar"))$("courseBar").style.width=`${UNITS.length?d/UNITS.length*100:0}%`;
+ const d=doneCount(),journey=journeyDone(),stars=totalStars(),bossStars=examBossStars(),lv=level(),next=lv*100;
+ if($("courseProgress"))$("courseProgress").textContent=`${journey}/12`;
+ if($("courseBar"))$("courseBar").style.width=`${journey/12*100}%`;
  if($("rewardLevel"))$("rewardLevel").textContent=`Lv.${lv}`;
  if($("rewardXp"))$("rewardXp").textContent=`${progress.xp} XP`;
- if($("rewardStars"))$("rewardStars").textContent=`${stars} ⭐`;
+ if($("rewardStars"))$("rewardStars").textContent=`${stars} ⭐${bossStars?` ＋ ${bossStars} 👑⭐`:""}`;
  if($("rewardCombo"))$("rewardCombo").textContent=`🔥 ${progress.comboBest}`;
  if($("rewardMistakes"))$("rewardMistakes").textContent=`🩹 ${unresolvedMistakes()}`;
  if($("xpBar"))$("xpBar").style.width=`${Math.min(100,(progress.xp%100))}%`;
@@ -80,7 +92,7 @@ function renderRewards(){
  if($("dailyText"))$("dailyText").textContent=`今日：完成 ${progress.daily.units}/1 章・答對 ${progress.daily.correct}/3 題`;
  if($("dailyBar"))$("dailyBar").style.width=`${Math.min(100,((Math.min(progress.daily.units,1)+Math.min(progress.daily.correct,3)/3)/2)*100)}%`;
  if($("badgeMini"))$("badgeMini").innerHTML=badgeStates().map(b=>`<span class="miniBadge ${b.ok?"on":""}" title="${b.tip}">${b.emoji}</span>`).join("");
- if($("topReward"))$("topReward").textContent=`Lv.${lv}・${progress.xp} XP・${stars}⭐`;
+ if($("topReward"))$("topReward").textContent=`Lv.${lv}・${progress.xp} XP・${stars}⭐${bossStars?`・${bossStars}👑⭐`:""}`;
  if($("unitStarStatus"))$("unitStarStatus").textContent=`${unitStars(current)}/3 星`;
  if($("chapterBadge")){const u=UNITS.find(x=>x.id===current),on=!!progress.completed[current];$("chapterBadge").classList.toggle("on",on);if($("chapterBadgeStatus"))$("chapterBadgeStatus").textContent=on?"已解鎖":"完成本章解鎖"}
  const cs=unitStars(current);if($("chapterStarsBig"))$("chapterStarsBig").innerHTML=[1,2,3].map(i=>`<span class="${i<=cs?"on":""}">${i<=cs?"★":"☆"}</span>`).join("");
@@ -88,10 +100,16 @@ function renderRewards(){
 }
 function renderNav(){
  const nav=$("unitNav");if(!nav)return;
- nav.innerHTML=UNITS.map((u,i)=>{const s=unitStars(u.id);return `<button class="${u.id===current?"on":""}" onclick="selectUnit('${u.id}',true,'chapter')"><span>${u.emoji}</span><div><b>${i+1}. ${u.title}</b><small>${progress.completed[u.id]?`已過關 ${"⭐".repeat(s)}`:"先玩圖・解生活題"}</small></div></button>`}).join("");
- renderRewards()
+ const items=[];
+ UNITS.forEach((u,i)=>{
+  const s=unitStars(u.id),station=i<5?i+1:i+2;items.push(`<button class="${viewMode!=="exam"&&u.id===current?"on":""}" onclick="selectUnit('${u.id}',true,'chapter')"><span>${u.emoji}</span><div><b>${station}. ${u.title}</b><small>${progress.completed[u.id]?`已過關 ${"⭐".repeat(s)}`:"進入故事關卡"}</small></div></button>`);
+  if(i===4){const a=examRecord("midterm","A"),b=examRecord("midterm","B");items.push(`<button class="examNav ${viewMode==="exam"&&examCheckpoint==="midterm"?"on":""}" onclick="selectCheckpoint('midterm')"><span>👑</span><div><b>6. 期中魔王檢核</b><small>A ${a.attempts?a.best+"分":"未挑戰"}・B ${b.attempts?b.best+"分":"未挑戰"}</small></div></button>`)}
+ });
+ const a=examRecord("final","A"),b=examRecord("final","B");items.push(`<button class="examNav finalNav ${viewMode==="exam"&&examCheckpoint==="final"?"on":""}" onclick="selectCheckpoint('final')"><span>🏰</span><div><b>12. 期末魔王檢核</b><small>A ${a.attempts?a.best+"分":"未挑戰"}・B ${b.attempts?b.best+"分":"未挑戰"}</small></div></button>`);
+ nav.innerHTML=items.join("");renderRewards()
 }
 function renderUnit(){
+ if(viewMode==="exam"){renderExamCheckpoint(examCheckpoint||"midterm");return}
  const u=UNITS.find(x=>x.id===current),stars=unitStars(current),wrongN=unresolvedMistakes(current);
  if(viewMode==="today"){renderToday(u);return}
  $("unitTitle").textContent=`${u.emoji} ${u.title}`;$("unitSub").textContent=`冒險章節｜一關一關玩，不用一次看完`;
@@ -133,15 +151,16 @@ function renderUnit(){
    ${masteryLevelTabs(u.id)}
    ${masteryLevelHtml(u)}
    ${chapterFinaleHtml(u)}
-   ${examArenaHtml()}
  </section>
- <button class="fullToggle adventureToggle" onclick="toggleFull()">${showFull?"收起加碼冒險":"🎮 我還想玩｜開啟 5 題挑戰"}</button>
+ <button class="fullToggle adventureToggle" onclick="toggleFull()">${showFull?"收起加碼冒險":"🎮 我還想玩｜預覽 A／B／C／D 五題挑戰"}</button>
  <section class="achievementPanel"><h3>冒險徽章櫃</h3><div class="badgeGrid">${badgeStates().map(b=>`<div class="achievement ${b.ok?"on":""}"><span>${b.emoji}</span><b>${b.name}</b><small>${b.ok?"已解鎖":b.tip}</small></div>`).join("")}</div></section>`;
  G5Voice?.enhance?.();renderRewards();if(examSession&&!examSession.finished)setTimeout(startExamClock,20)
 }
 function syncRoute(){
  try{
-  const q=new URLSearchParams();q.set("unit",current);q.set("mode",viewMode);if(viewMode==="today")q.set("lesson",lessonIndex);
+  const q=new URLSearchParams();
+  if(viewMode==="exam"){q.set("mode","exam");q.set("checkpoint",examCheckpoint||"midterm")}
+  else{q.set("unit",current);q.set("mode",viewMode);if(viewMode==="today")q.set("lesson",lessonIndex)}
   window.history?.replaceState?.({},"",`math.html?${q.toString()}`)
  }catch(e){}
 }
@@ -178,7 +197,7 @@ function renderToday(u){
 }
 function setTodayLesson(i){lessonIndex=i;renderUnit();syncRoute();window.scrollTo?.({top:0,behavior:"smooth"})}
 function nextToday(d){const u=UNITS.find(x=>x.id===current),n=todayLessonsFor(u).length;if(d>0&&lessonIndex>=n-1){openChapter();return}lessonIndex=Math.min(n-1,Math.max(0,lessonIndex+d));renderUnit();syncRoute();window.scrollTo?.({top:0,behavior:"smooth"})}
-function openChapter(){viewMode="chapter";showFull=false;renderNav();renderUnit();syncRoute();window.scrollTo?.({top:0,behavior:"smooth"})}
+function openChapter(){viewMode="chapter";examCheckpoint="";showFull=false;renderNav();renderUnit();syncRoute();window.scrollTo?.({top:0,behavior:"smooth"})}
 function checkTodayLesson(i){
  const u=UNITS.find(x=>x.id===current),L=todayLessonsFor(u)[lessonIndex],fb=$("todayFb");if(!L)return;const key=`${u.id}_${lessonIndex}`,already=!!progress.todayLessons?.[key];
  if(i===L.answer){let bonus=0;if(!already){progress.todayLessons[key]=true;bonus=rewardCorrect(6);save()}fb.className="feedback good";fb.textContent=`✅ ${L.explain}${already?'':`　+${6+bonus} XP`}`;if(!already)showRewardToast(`🎯 今日觀念完成！+${6+bonus} XP`)}else{rewardWrong();save();fb.className="feedback bad";fb.textContent=`沒關係，先看一次圖和『過關提示』。提示：${L.definition}`}
@@ -211,9 +230,9 @@ function showAiRest(){const u=UNITS.find(x=>x.id===current),el=$("aiRestResult")
 function orderedQuestions(uid){const rank={"基礎":0,"應用":1,"進階":2,"挑戰":3};return [...(BANK[uid]||[])].sort((a,b)=>(rank[a.difficulty]??1)-(rank[b.difficulty]??1))}
 function levelQuestions(uid){const q=orderedQuestions(uid),A=q.slice(0,5),D=q.slice(-5),used=new Set([...A,...D].map(x=>x.id)),mid=q.filter(x=>!used.has(x.id));return {A,B:mid.slice(0,5),C:mid.slice(5,10),D}}
 function levelStats(uid,l){const qs=levelQuestions(uid)[l]||[],correct=qs.filter(q=>progress.correct[q.id]).length,attempted=qs.filter(q=>progress.correct[q.id]||(progress.mistakes[q.id]||0)>0).length;return {correct,attempted,pass:correct>=3}}
-function levelUnlocked(uid,l){const i=MASTERY_LEVELS.indexOf(l);if(i<=0)return true;const prev=levelStats(uid,MASTERY_LEVELS[i-1]);return prev.pass||prev.attempted>=3}
-function masteryLevelTabs(uid){return `<div class="levelTabs">${MASTERY_LEVELS.map((l,i)=>{const st=levelStats(uid,l),open=levelUnlocked(uid,l);return `<button class="levelTab ${masteryLevel===l?'on':''} ${open?'':'locked'}" ${open?`onclick="setMasteryLevel('${l}')"`:'disabled'}><span>${l}</span><b>${l}卷・${['新手村','探險隊','高手坡','勇者塔'][i]}</b><small>${st.pass?'✅ 已過關':open?`${st.correct}/5 答對`:'🔒 先玩上一級'}</small></button>`}).join('')}</div>`}
-function setMasteryLevel(l){if(!levelUnlocked(current,l))return;masteryLevel=l;renderUnit();setTimeout(()=>document.querySelector('.levelPaper')?.scrollIntoView({behavior:'smooth',block:'start'}),20)}
+function levelUnlocked(uid,l){return true}
+function masteryLevelTabs(uid){return `<div class="levelTabs">${MASTERY_LEVELS.map((l,i)=>{const st=levelStats(uid,l);return `<button class="levelTab ${masteryLevel===l?'on':''}" onclick="setMasteryLevel('${l}')"><span>${l}</span><b>${l}卷・${['新手村','探險隊','高手坡','勇者塔'][i]}</b><small>${st.pass?'✅ 已過關':`👀 可預覽・${st.correct}/5 答對`}</small></button>`}).join('')}</div>`}
+function setMasteryLevel(l){masteryLevel=l;renderUnit();setTimeout(()=>document.querySelector('.levelPaper')?.scrollIntoView({behavior:'smooth',block:'start'}),20)}
 function masteryLevelHtml(u){const qs=levelQuestions(u.id)[masteryLevel]||[],st=levelStats(u.id,masteryLevel),i=MASTERY_LEVELS.indexOf(masteryLevel),titles=['先試試看','多想一步','開始活用','勇者挑戰'],words=['不會也完全沒關係，先看圖玩 5 題。','有幾題會轉個彎，慢慢來就好。','把數學放進生活情境，你已經走很遠了。','這是加碼勇者關，不一定要全會。'];return `<div class="levelPaper level${masteryLevel}"><div class="levelPaperHead"><div><small>${masteryLevel}卷・LEVEL ${masteryLevel}</small><h3>${titles[i]}｜只有 5 題</h3><p>${words[i]}</p></div><div class="levelScore"><b>${st.correct}/5</b><span>${st.pass?'🎉 過關！':'答對 3 題就過關'}</span></div></div><div class="phoneReward ${st.pass?'earned':''}"><span>📱</span><div><b>${st.pass?'手機時間券已點亮！':'這級的神祕獎勵'}</b><small>${st.pass?'可以和家長約定兌換 5 分鐘手機時間。':'答對 3 題就會點亮；是否兌換由家長決定。'}</small></div></div><div class="levelQuestionList">${qs.map((q,j)=>levelPracticeHtml(q,j)).join('')}</div><div class="levelEndCheer">${st.pass?'🌟 你不需要 5 題全對也能前進。做得到 3 題，就代表這一級已經有抓到重點！':'🍀 卡住就按提示。今天先做到 1 題，也算向前一步。'}</div></div>`}
 function levelPracticeHtml(q,i){const answered=!!progress.correct[q.id],wrong=progress.mistakes[q.id]||0;return `<article data-voice class="practiceQ pictureQuestion ${q.type==='life'?'lifeQ':'conceptQ'} ${wrong&&!answered?'needsFix':''}"><div class="qPicture">${questionVisual(current,q,i)}</div><div class="qMeta"><span>${q.type==='life'?'🏙️ 生活題':'🎯 闖關題'}</span><span class="difficulty">${masteryLevel}級</span><small>${answered?'✓ 已答對':wrong?'再試一次':'答對 +8 XP'}</small></div><b>${i+1}. ${q.text}</b><div class="qChoices">${q.options.map((o,j)=>`<button ${answered?'disabled':''} onclick="checkPractice('${q.id}',${j},this)">${String.fromCharCode(65+j)}. ${o}</button>`).join('')}</div><div class="hintLine"><button ${answered?'disabled':''} onclick="showHint('${q.id}')">💡 我想看提示</button><span id="hint_${q.id}"></span></div><p id="fb_${q.id}" class="${answered?'goodText':''}">${answered?`✓ ${q.explain}${wrong?'　🩹 修復成功！':''}`:''}</p></article>`}
 function questionVisual(uid,q,i){
@@ -230,19 +249,79 @@ function questionVisual(uid,q,i){
 }
 function chapterFinaleHtml(u){const ls=u.today_lessons||[],names=ls.map(x=>x.title).slice(0,6);return `<section class="chapterFinale" data-voice><div class="finaleScene"><span>${u.badge.emoji}</span><div><small>故事完結篇</small><h3>你把這一章的線索收進背包了</h3></div></div><p>主角把任務完成後，回頭一看，才發現一路上其實已經撿到這些道具：</p><div class="souvenirRow">${names.map((x,i)=>`<span>${['🧭','🔑','🪄','🧩','🎒','🏅'][i]||'⭐'} ${x}</span>`).join('')}</div><p class="finaleWords">不用一次記住全部。下次遇到題目，只要想起故事裡的一個畫面，就能把方法慢慢找回來。</p></section>`}
 
-function examRange(){const idx=UNITS.findIndex(x=>x.id===current),start=idx<5?0:5;return {start,label:start===0?'第一次模擬月考｜第 1～5 章':'第二次模擬月考｜第 6～10 章'}}
-function examQuestions(paper){const {start}=examRange(),out=[];for(let i=start;i<start+5;i++){const uid=UNITS[i].id,q=orderedQuestions(uid),pick=paper==='A'?[1,Math.min(12,q.length-1)]:[4,Math.min(17,q.length-1)];for(const n of pick){const x=q[n];out.push({...x,examUid:uid,examUnit:UNITS[i].title})}}return out}
-function examArenaHtml(){const r=examRange();if(!examSession)return `<section class="examLobby"><div class="examSign">🔔</div><div><small>加碼模式・不是每天都要考</small><h3>${r.label}</h3><p>想體驗真的月考再進來。每卷 10 題、20 分鐘，有倒數計時和考場鈴聲。平常闖關不用打開這裡。</p></div><div class="examPaperBtns"><button onclick="startExam('A')"><span>A</span><b>月考 A 卷</b><small>10 題・20 分鐘</small></button><button onclick="startExam('B')"><span>B</span><b>月考 B 卷</b><small>不同題型・同範圍</small></button></div></section>`;
- const qs=examQuestions(examSession.paper);if(examSession.finished){return `<section class="examResult"><div class="examScoreCircle">${examSession.score}</div><h3>${r.label}・${examSession.paper}卷完成</h3><p>${examSession.score>=80?'🎉 很棒！你已經有正式上場的感覺了。':examSession.score>=60?'🌱 已經有不少題會了，回去玩幾關再來會更穩。':'🍀 這只是模擬，不代表你不會。先回冒險關卡把圖看懂，再來一次。'}</p><button onclick="closeExam()">回到冒險區</button></section>`}
- return `<section class="examPaper"><div class="examTop"><div><small>${r.label}</small><h3>${examSession.paper} 卷</h3></div><div class="examTimer"><span>⏱️</span><b id="examClock">20:00</b><button onclick="ringBell()">🔔 試聽</button></div></div><div class="examIdentity"><span>班級：________</span><span>姓名：________</span><span>座號：____</span><span>得分：____</span></div><div class="examRule">📣 10 題，每題 10 分。可以先跳過不會的題目；剩 5 分鐘、1 分鐘和時間到會響鈴。</div><div class="examQuestions">${qs.map((q,i)=>examQuestionHtml(q,i)).join('')}</div><div class="examActions"><button onclick="finishExam(false)">交卷</button><small>已作答 ${Object.keys(examSession.answers||{}).length}/10 題</small></div></section>`}
-function examQuestionHtml(q,i){const chosen=examSession.answers?.[q.id];return `<article class="examQ" data-voice><div class="qPicture">${questionVisual(q.examUid,q,i%5)}</div><small>第 ${i+1} 題｜${q.examUnit}</small><b>${q.text}</b><div class="examChoices">${q.options.map((o,j)=>`<button class="${chosen===j?'selected':''}" onclick="answerExam('${q.id}',${j},this)">${String.fromCharCode(65+j)}. ${o}</button>`).join('')}</div></article>`}
-function startExam(paper){stopExamClock();examSession={paper,answers:{},endsAt:Date.now()+20*60*1000,finished:false,warn5:false,warn1:false};ringBell();renderUnit();setTimeout(()=>document.querySelector('.examPaper')?.scrollIntoView({behavior:'smooth',block:'start'}),30)}
-function answerExam(id,ans,btn){if(!examSession||examSession.finished)return;examSession.answers[id]=ans;btn?.parentElement?.querySelectorAll('button')?.forEach(b=>b.classList.remove('selected'));btn?.classList.add('selected');const el=document.querySelector('.examActions small');if(el)el.textContent=`已作答 ${Object.keys(examSession.answers).length}/10 題`}
-function startExamClock(){if(!examSession||examSession.finished)return;stopExamClock();const tick=()=>{if(!examSession||examSession.finished)return;let sec=Math.max(0,Math.ceil((examSession.endsAt-Date.now())/1000)),m=Math.floor(sec/60),s=sec%60,el=$("examClock");if(el)el.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;if(sec<=300&&!examSession.warn5){examSession.warn5=true;ringBell();showRewardToast('🔔 剩 5 分鐘，先完成會的題目')};if(sec<=60&&!examSession.warn1){examSession.warn1=true;ringBell();showRewardToast('🔔 剩 1 分鐘，準備檢查')};if(sec<=0)finishExam(true)};tick();examTicker=setInterval(tick,1000)}
+function examInfo(cp=examCheckpoint){return EXAMS?.[cp]||EXAMS?.midterm}
+function examPaperQuestions(cp,paper){return examInfo(cp)?.papers?.[paper]||[]}
+function examBest(cp,paper){return examRecord(cp,paper).best||0}
+function examRewardTarget(score){return score>=90?50:score>=80?35:score>=60?20:10}
+function examRank(score){return score>=90?"👑 金冠魔王":score>=80?"⭐ 魔王星":score>=60?"🛡️ 勇者通過":"🌱 初次偵察"}
+function renderExamCheckpoint(cp){
+ examCheckpoint=cp==="final"?"final":"midterm";const info=examInfo(),station=examCheckpoint==="midterm"?6:12,a=examRecord(examCheckpoint,"A"),b=examRecord(examCheckpoint,"B"),boss=[a.best,b.best].filter(x=>x>=80).length;
+ $("unitTitle").textContent=`${examCheckpoint==="midterm"?"👑":"🏰"} 第 ${station} 站｜${info.title}`;$("unitSub").textContent=`${info.range}・A／B 兩卷獨立計分・每卷 100 分・${info.minutes} 分鐘`;
+ $("main").innerHTML=`<section class="examCheckpointHero"><div class="examBossIcon">${examCheckpoint==="midterm"?"👑":"🏰"}</div><div><div class="eyebrow">BOSS CHECKPOINT ${station}/12</div><h2>${info.title}不是懲罰，是看看你已經會多少</h2><p>題型參考國小定期評量節奏：選擇、填充、計算、應用混合；不會的先跳過，最後再回來。A、B 兩卷分開算分，可以分不同天挑戰。</p><div class="examBossStatus"><span>👑 魔王星 ${boss}/2</span><span>A卷最佳 ${a.attempts?a.best+"分":"尚未挑戰"}</span><span>B卷最佳 ${b.attempts?b.best+"分":"尚未挑戰"}</span></div></div></section>${examArenaHtml(examCheckpoint)}`;
+ G5Voice?.enhance?.();renderRewards();syncRoute();if(examSession&&!examSession.finished)setTimeout(startExamClock,20)
+}
+function examArenaHtml(cp=examCheckpoint){
+ const info=examInfo(cp),a=examRecord(cp,"A"),b=examRecord(cp,"B");
+ if(!examSession)return `<section class="examLobby bossLobby"><div class="examFormatRibbon"><span>選擇 20 分</span><span>填充 20 分</span><span>計算 24 分</span><span>應用 36 分</span><b>總分 100</b></div><div class="examLobbyIntro"><div class="examSign">🔔</div><div><small>正式模擬・${info.minutes} 分鐘</small><h3>${info.title}｜${info.range}</h3><p>每卷 15 題。題目會依內容附上位值表、數線、分數圖、幾何圖或立體圖。開始後會倒數，剩 10、5、1 分鐘都有考場鈴聲提醒。</p></div></div><div class="examPaperBtns"><button onclick="startExam('A')"><span>A</span><b>A 卷｜第一份魔王卷</b><small>${a.attempts?`最佳 ${a.best} 分・已挑戰 ${a.attempts} 次`:`100 分・${info.minutes} 分鐘・尚未挑戰`}</small></button><button onclick="startExam('B')"><span>B</span><b>B 卷｜第二份魔王卷</b><small>${b.attempts?`最佳 ${b.best} 分・已挑戰 ${b.attempts} 次`:`不同題目・同範圍・獨立計分`}</small></button></div><div class="examEncourage">🍀 不必兩卷一次寫完。今天挑 A，改天再挑 B，也算很完整的練習。</div></section>`;
+ const qs=examPaperQuestions(cp,examSession.paper);
+ if(examSession.finished){const br=examSession.breakdown||{},rec=examRecord(cp,examSession.paper),earned=examSession.rewardEarned||0;return `<section class="examResult bossResult"><div class="examScoreCircle">${examSession.score}</div><div class="bossRank">${examRank(examSession.score)}</div><h3>${info.title}・${examSession.paper} 卷完成</h3><p>${examSession.score>=90?'🎉 太強了！你拿到金冠魔王成就。':examSession.score>=80?'⭐ 魔王星入袋！這份卷已經很穩。':examSession.score>=60?'🛡️ 你已經守住大部分關卡，回去補幾個弱點就更穩。':'🌱 完成整份卷就是一次很好的偵察，知道下一步要練哪裡。'}</p><div class="examBreakdown"><span>選擇 ${br.choice||0}/20</span><span>填充 ${br.fill||0}/20</span><span>計算 ${br.calc||0}/24</span><span>應用 ${br.application||0}/36</span></div><div class="examRewardEarned">${earned?`🏆 本次新增 ${earned} XP・最佳成績 ${rec.best} 分`:`🏆 最佳成績 ${rec.best} 分・再挑戰只會記更高分，不會倒扣`}</div><div class="examResultActions"><button onclick="reviewExam()">🔎 看錯題提示</button><button onclick="restartExam()">🔁 再挑戰這一卷</button><button onclick="closeExam()">回檢核點</button></div><div id="examReview"></div></section>`}
+ const groups=[['choice','一、選擇題','每題 4 分，共 20 分'],['fill','二、填充題','每題 5 分，共 20 分'],['calc','三、計算題','每題 8 分，共 24 分'],['application','四、應用題','每題 12 分，共 36 分']];
+ return `<section class="examPaper livelyPaper"><div class="examTop"><div><small>${info.title}｜${info.range}</small><h3>${examSession.paper} 卷・滿分 100</h3></div><div class="examTimer"><span>⏱️</span><b id="examClock">${String(info.minutes).padStart(2,'0')}:00</b><button onclick="ringBell()">🔔 試聽</button></div></div><div class="examIdentity"><span>班級：________</span><span>姓名：________</span><span>座號：____</span><span>得分：____ / 100</span></div><div class="examRule">📣 考試時間 ${info.minutes} 分鐘。先做會的題目；計算題與應用題可以在草稿格寫過程。剩 10、5、1 分鐘會響鈴。</div>${groups.map(g=>`<section class="examSection"><div class="examSectionTitle"><h4>${g[1]}</h4><span>${g[2]}</span></div><div class="examQuestions">${qs.filter(q=>q.type===g[0]).map((q,i)=>examQuestionHtml(q,qs.indexOf(q))).join('')}</div></section>`).join('')}<div class="examActions"><button onclick="finishExam(false)">📨 交卷算分</button><small>已作答 <b id="examAnsweredCount">${Object.keys(examSession.answers||{}).length}</b>/${qs.length} 題</small></div></section>`
+}
+function examQuestionHtml(q,i){
+ const chosen=examSession.answers?.[q.id];const label=`第 ${i+1} 題・${q.points} 分`;
+ if(q.type==='choice')return `<article class="examQ" data-voice><div class="qPicture">${examVisual(q)}</div><small>${label}</small><b>${q.prompt}</b><div class="examChoices">${q.options.map((o,j)=>`<button class="${chosen===j?'selected':''}" onclick="answerExam('${q.id}',${j},this)">${String.fromCharCode(65+j)}. ${o}</button>`).join('')}</div></article>`;
+ const val=typeof chosen==='string'?chosen:'';return `<article class="examQ examWritten" data-voice><div class="qPicture">${examVisual(q)}</div><small>${label}｜${q.type==='fill'?'填充':q.type==='calc'?'計算':'應用'}</small><b>${q.prompt}</b>${q.type==='calc'||q.type==='application'?`<textarea class="scratchBox" placeholder="草稿／列式區（這裡不計分，可以放心寫）" oninput="saveExamScratch('${q.id}',this.value)">${examSession.scratch?.[q.id]||''}</textarea>`:''}<label class="examAnswerLine">我的答案：<input value="${escapeHtmlAttr(val)}" oninput="answerExamText('${q.id}',this.value)" placeholder="填入最後答案"></label></article>`
+}
+function escapeHtmlAttr(v){return String(v??'').replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;')}
+function normalizeExamAnswer(v){return String(v??'').trim().toLowerCase().replace(/[，,。．\s]/g,'').replace(/平方公分|平方公尺|公分|公尺|公里|公升|毫升|ml|元|人|袋|顆|根|條|個|分鐘|分|秒鐘|秒|度|圈/g,'').replace(/又/g,'又')}
+function examAnswerCorrect(q,v){if(q.type==='choice')return Number(v)===Number(q.answer);const n=normalizeExamAnswer(v);return (q.answers||[]).some(a=>normalizeExamAnswer(a)===n)}
+function answerExam(id,ans,btn){if(!examSession||examSession.finished)return;examSession.answers[id]=ans;btn?.parentElement?.querySelectorAll('button')?.forEach(b=>b.classList.remove('selected'));btn?.classList.add('selected');updateExamAnswered()}
+function answerExamText(id,val){if(!examSession||examSession.finished)return;examSession.answers[id]=val;updateExamAnswered()}
+function saveExamScratch(id,val){if(!examSession||examSession.finished)return;examSession.scratch=examSession.scratch||{};examSession.scratch[id]=val}
+function updateExamAnswered(){const el=$("examAnsweredCount");if(el)el.textContent=Object.values(examSession?.answers||{}).filter(v=>String(v).trim()!=="").length}
+function startExam(paper){const info=examInfo();stopExamClock();examSession={paper,answers:{},scratch:{},endsAt:Date.now()+info.minutes*60*1000,finished:false,warn10:false,warn5:false,warn1:false};ringBell();renderUnit();setTimeout(()=>document.querySelector('.examPaper')?.scrollIntoView({behavior:'smooth',block:'start'}),30)}
+function startExamClock(){if(!examSession||examSession.finished)return;stopExamClock();const tick=()=>{if(!examSession||examSession.finished)return;let sec=Math.max(0,Math.ceil((examSession.endsAt-Date.now())/1000)),m=Math.floor(sec/60),s=sec%60,el=$("examClock");if(el)el.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;if(sec<=600&&!examSession.warn10){examSession.warn10=true;ringBell();showRewardToast('🔔 剩 10 分鐘，先把會的題目完成')};if(sec<=300&&!examSession.warn5){examSession.warn5=true;ringBell();showRewardToast('🔔 剩 5 分鐘，開始回頭檢查')};if(sec<=60&&!examSession.warn1){examSession.warn1=true;ringBell();showRewardToast('🔔 剩 1 分鐘，準備交卷')};if(sec<=0)finishExam(true)};tick();examTicker=setInterval(tick,1000)}
 function stopExamClock(){if(examTicker){clearInterval(examTicker);examTicker=null}}
 function ringBell(){try{const C=window.AudioContext||window.webkitAudioContext;if(C){const c=new C(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.setValueAtTime(880,c.currentTime);o.frequency.exponentialRampToValueAtTime(660,c.currentTime+.18);g.gain.setValueAtTime(.12,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.45);o.start();o.stop(c.currentTime+.45);return}}catch(e){};try{speechSynthesis?.speak?.(new SpeechSynthesisUtterance('叮咚'))}catch(e){}}
-function finishExam(auto=false){if(!examSession||examSession.finished)return;const qs=examQuestions(examSession.paper),n=qs.filter(q=>examSession.answers[q.id]===q.answer).length;examSession.score=n*10;examSession.finished=true;stopExamClock();ringBell();const key=`${examRange().start}_${examSession.paper}`;if(examSession.score>=80&&!progress.examAwards[key]){progress.examAwards[key]=true;progress.xp+=30;save();showRewardToast('🏆 月考達標！+30 XP')};renderUnit();setTimeout(()=>document.querySelector('.examResult')?.scrollIntoView({behavior:'smooth',block:'center'}),30)}
+function finishExam(auto=false){if(!examSession||examSession.finished)return;const qs=examPaperQuestions(examCheckpoint,examSession.paper),br={choice:0,fill:0,calc:0,application:0};let score=0;qs.forEach(q=>{if(examAnswerCorrect(q,examSession.answers[q.id])){score+=q.points;br[q.type]+=q.points}});examSession.score=score;examSession.breakdown=br;examSession.finished=true;stopExamClock();ringBell();const key=`${examCheckpoint}_${examSession.paper}`,old=examRecord(examCheckpoint,examSession.paper),best=Math.max(old.best,score),target=examRewardTarget(score),awarded=Number(progress.examAwards[key])||0,delta=Math.max(0,target-awarded);progress.examScores[key]={best,last:score,attempts:(old.attempts||0)+1};if(delta){progress.examAwards[key]=target;progress.xp+=delta}examSession.rewardEarned=delta;save();showRewardToast(score>=80?`👑 魔王挑戰 ${score} 分！${delta?` +${delta} XP`:''}`:`📘 完成整份考卷！${delta?` +${delta} XP`:''}`);renderNav();renderUnit();setTimeout(()=>document.querySelector('.examResult')?.scrollIntoView({behavior:'smooth',block:'center'}),30)}
+function reviewExam(){if(!examSession?.finished)return;const qs=examPaperQuestions(examCheckpoint,examSession.paper),wrong=qs.filter(q=>!examAnswerCorrect(q,examSession.answers[q.id]));const el=$("examReview");if(!el)return;el.innerHTML=wrong.length?`<div class="examReviewBox"><h4>AI 考後休息站｜先看提示，不用立刻重算</h4>${wrong.map((q,i)=>`<div><b>第 ${examPaperQuestions(examCheckpoint,examSession.paper).indexOf(q)+1} 題</b><p>${q.explain}</p></div>`).join('')}</div>`:`<div class="examReviewBox perfect"><h4>🎉 全部答對！</h4><p>今天不用訂正，去休息吧。</p></div>`;G5Voice?.enhance?.()}
+function restartExam(){const p=examSession?.paper||'A';examSession=null;startExam(p)}
 function closeExam(){stopExamClock();examSession=null;renderUnit();setTimeout(()=>document.querySelector('.examLobby')?.scrollIntoView({behavior:'smooth',block:'start'}),20)}
+function examVisual(q){
+ const v=q.visual||'',id=q.id;
+ const shell=(body,caption='')=>`<svg viewBox="0 0 360 150" aria-hidden="true">${body}${caption?`<text x="180" y="140" text-anchor="middle" font-size="13" font-weight="800" fill="#53637a">${caption}</text>`:''}</svg>`;
+ if(v==='inverse_fact')return shell(`<rect x="35" y="42" width="112" height="52" rx="13" fill="#e9efff"/><rect x="213" y="42" width="112" height="52" rx="13" fill="#fff0cf"/><text x="91" y="75" text-anchor="middle" font-size="20" font-weight="900">5 × 9 = 45</text><text x="269" y="75" text-anchor="middle" font-size="20" font-weight="900">45 ÷ 5 = 9</text><path d="M153 67 H205" stroke="#7058bd" stroke-width="4"/><path d="M198 59 l9 8 -9 8" fill="none" stroke="#7058bd" stroke-width="4"/>`, '乘法、除法是互逆線索');
+ if(v==='infinite_line')return shell(`<line x1="30" y1="76" x2="330" y2="76" stroke="#43536d" stroke-width="3"/><path d="M330 76 l-12 -7 v14 z" fill="#43536d"/>${[55,105,155,205,255,305].map((x,i)=>`<circle cx="${x}" cy="76" r="6" fill="#6c88df"/><text x="${x}" y="108" text-anchor="middle" font-size="12">${(i+1)*12}</text>`).join('')}<text x="70" y="38" font-size="16" font-weight="900">12、24、36、48……一直往後</text>`, '倍數沒有最大值');
+ if(v==='same_numerator')return shell(`<g>${[0,1,2,3].map((k)=>{const n=[4,5,6,8][k],x=52+k*78;return `<circle cx="${x}" cy="68" r="30" fill="#f7f9fd" stroke="#5878d7" stroke-width="2"/><path d="M${x} 68 L${x} 38 A30 30 0 0 1 ${x+30} 68 Z" fill="#f2b64c"/><text x="${x}" y="112" text-anchor="middle" font-size="13" font-weight="900">3/${n}</text>`}).join('')}</g>`, '分子相同：分母越小，每份越大');
+ if(v==='rectangle_axes')return shell(`<rect x="80" y="38" width="200" height="72" rx="4" fill="#eef3ff" stroke="#5b79d7" stroke-width="3"/><line x1="180" y1="25" x2="180" y2="123" stroke="#e5a139" stroke-width="3" stroke-dasharray="7 5"/><line x1="60" y1="74" x2="300" y2="74" stroke="#e5a139" stroke-width="3" stroke-dasharray="7 5"/>`, '長方形：2 條對稱軸');
+ if(v==='square_axes')return shell(`<rect x="115" y="28" width="130" height="100" fill="#eef3ff" stroke="#5b79d7" stroke-width="3"/><line x1="180" y1="18" x2="180" y2="138" stroke="#e5a139" stroke-width="2"/><line x1="100" y1="78" x2="260" y2="78" stroke="#e5a139" stroke-width="2"/><line x1="110" y1="20" x2="250" y2="136" stroke="#8c69ce" stroke-width="2" stroke-dasharray="5 4"/><line x1="250" y1="20" x2="110" y2="136" stroke="#8c69ce" stroke-width="2" stroke-dasharray="5 4"/>`, '正方形：4 條對稱軸');
+ if(v==='pentagon_axes')return shell(`<polygon points="180,20 245,68 220,130 140,130 115,68" fill="#f3efff" stroke="#6b56b6" stroke-width="3"/>${[-36,-18,0,18,36].map(a=>`<line x1="180" y1="18" x2="180" y2="136" stroke="#e4a13d" stroke-width="1.8" stroke-dasharray="5 4" transform="rotate(${a} 180 75)"/>`).join('')}`, '正五邊形：5 條對稱軸');
+ if(v==='tri_prism'||v==='tri_prism_vertices')return shell(`<polygon points="78,105 120,35 162,105" fill="#e8efff" stroke="#5878d7" stroke-width="3"/><polygon points="200,105 242,35 284,105" fill="#f6f8ff" stroke="#5878d7" stroke-width="3"/><line x1="78" y1="105" x2="200" y2="105" stroke="#5878d7" stroke-width="3"/><line x1="120" y1="35" x2="242" y2="35" stroke="#5878d7" stroke-width="3"/><line x1="162" y1="105" x2="284" y2="105" stroke="#5878d7" stroke-width="3"/>${v.includes('vertices')?[78,120,162,200,242,284].map((x,i)=>`<circle cx="${x}" cy="${i%3===1?35:105}" r="5" fill="#e6a238"/>`).join(''):''}`, v.includes('vertices')?'三角柱：6 個頂點':'三角柱：2 個三角形底面＋3 個側面');
+ if(v==='pent_prism')return shell(`<polygon points="115,48 150,25 190,38 195,78 155,100 118,82" fill="#eef3ff" stroke="#5878d7" stroke-width="3"/><polygon points="215,55 250,32 290,45 295,85 255,107 218,89" fill="#f7f9ff" stroke="#5878d7" stroke-width="3"/><line x1="115" y1="48" x2="215" y2="55" stroke="#5878d7" stroke-width="3"/><line x1="150" y1="25" x2="250" y2="32" stroke="#5878d7" stroke-width="3"/><line x1="190" y1="38" x2="290" y2="45" stroke="#5878d7" stroke-width="3"/><line x1="195" y1="78" x2="295" y2="85" stroke="#5878d7" stroke-width="3"/><line x1="155" y1="100" x2="255" y2="107" stroke="#5878d7" stroke-width="3"/>`, '五角柱：上下各 5 個頂點');
+ if(v.includes('place_grid'))return shell(`<rect x="22" y="34" width="316" height="65" rx="10" fill="#f5f8ff" stroke="#5b79d7" stroke-width="2"/><g stroke="#b8c6e9">${[1,2,3,4].map(k=>`<line x1="${22+k*63.2}" y1="34" x2="${22+k*63.2}" y2="99"/>`).join('')}</g><text x="53" y="58" font-size="11">個</text><text x="110" y="58" font-size="11">十分</text><text x="174" y="58" font-size="11">百分</text><text x="237" y="58" font-size="11">千分</text><text x="295" y="58" font-size="11">萬分</text>`, '位值要對齊');
+ if(v.includes('decimal')||v.includes('round'))return shell(`<line x1="30" y1="78" x2="330" y2="78" stroke="#44546d" stroke-width="3"/>${[0,1,2,3,4,5,6].map(k=>`<line x1="${45+k*45}" y1="68" x2="${45+k*45}" y2="88" stroke="#44546d"/><circle cx="${45+k*45}" cy="78" r="${k===3?7:4}" fill="${k===3?'#efad39':'#6986df'}"/>`).join('')}<text x="55" y="42" font-size="15" font-weight="900">小數點對齊／數線定位</text>`, '先看位值，再計算');
+ if(v.includes('factor')||v.includes('gcf')||v.includes('gift'))return shell(`<g fill="#6f8de8">${Array.from({length:24},(_,k)=>`<circle cx="${45+(k%8)*34}" cy="${35+Math.floor(k/8)*30}" r="9"/>`).join('')}</g><path d="M34 24 h286 v96 h-286z" fill="none" stroke="#e1a63f" stroke-width="3" stroke-dasharray="9 7"/>`, '能剛好分完的分法');
+ if(v.includes('multiple')||v.includes('timeline')||v.includes('line_8_12'))return shell(`<line x1="25" y1="78" x2="335" y2="78" stroke="#40516e" stroke-width="3"/>${[0,1,2,3,4,5,6,7].map(k=>`<circle cx="${35+k*42}" cy="78" r="${k===4?8:5}" fill="${k===4?'#efad39':'#6f8de8'}"/><text x="${31+k*42}" y="108" font-size="10">${k*6}</text>`).join('')}`, '共同落點就是公倍數線索');
+ if(v.includes('bus')||v.includes('lights'))return shell(`<text x="35" y="45" font-size="28">${v.includes('bus')?'🚌':'🔴'}</text><line x1="80" y1="42" x2="320" y2="42" stroke="#60738e" stroke-width="3"/><text x="35" y="100" font-size="28">${v.includes('bus')?'🚐':'🔵'}</text><line x1="80" y1="96" x2="320" y2="96" stroke="#60738e" stroke-width="3"/>${[110,180,250,320].map(x=>`<circle cx="${x}" cy="42" r="6" fill="#5c7ee2"/>`).join('')}${[130,220,310].map(x=>`<circle cx="${x}" cy="96" r="6" fill="#eeaa39"/>`).join('')}`, '找下一次同時發生');
+ if(v.includes('fraction'))return shell(`<circle cx="95" cy="72" r="48" fill="#e9efff" stroke="#5878d7" stroke-width="3"/><path d="M95 72 L95 24 A48 48 0 0 1 143 72 Z" fill="#f3b64c"/><rect x="190" y="40" width="130" height="22" rx="6" fill="#e9efff"/><rect x="190" y="40" width="86" height="22" rx="6" fill="#6f8de8"/><rect x="190" y="77" width="130" height="22" rx="6" fill="#eef5ef"/><rect x="190" y="77" width="65" height="22" rx="6" fill="#65b088"/>`, '先變成同樣大小的份');
+ if(v.includes('sector')){const deg=v.includes('120')?'120°':'90°';return shell(`<circle cx="180" cy="72" r="52" fill="#f7f9fd" stroke="#556fbe" stroke-width="3"/><path d="M180 72 L180 20 A52 52 0 0 1 ${v.includes('120')?'225 98':'232 72'} Z" fill="#f5be58" stroke="#e39c24" stroke-width="2"/><circle cx="180" cy="72" r="4" fill="#263e78"/><text x="190" y="52" font-size="16" font-weight="900">${deg}</text>`, '圓心角 ÷ 360°');}
+ if(v.includes('triangle_sticks'))return shell(`<line x1="70" y1="110" x2="160" y2="110" stroke="#5b79d7" stroke-width="7"/><line x1="70" y1="110" x2="125" y2="35" stroke="#e0a33c" stroke-width="7"/><line x1="125" y1="35" x2="160" y2="110" stroke="#6bad84" stroke-width="7"/><text x="72" y="130" font-size="12">兩邊和要大於第三邊</text>`, '三根棒子能不能合起來？');
+ if(v.includes('isosceles'))return shell(`<polygon points="180,25 95,115 265,115" fill="#eef3ff" stroke="#5b79d7" stroke-width="3"/><text x="164" y="55" font-size="16" font-weight="900">40°</text><path d="M119 90 l12 9 M241 90 l-12 9" stroke="#e1a33e" stroke-width="4"/>`, '兩個底角一樣大');
+ if(v.includes('hexagon'))return shell(`<polygon points="180,22 244,55 244,105 180,132 116,105 116,55" fill="#eef3ff" stroke="#5b79d7" stroke-width="3"/>${v.includes('axes')?`<line x1="180" y1="15" x2="180" y2="137" stroke="#e7a338" stroke-width="3" stroke-dasharray="6 5"/><line x1="110" y1="43" x2="250" y2="113" stroke="#e7a338" stroke-width="2" stroke-dasharray="6 5"/>`:''}`, v.includes('axes')?'正六邊形有多條鏡線':'可以切成三角形來算內角和');
+ if(v.includes('axes')||v.includes('mirror')||v.includes('symmetry'))return shell(`<line x1="180" y1="20" x2="180" y2="125" stroke="#e4a03a" stroke-width="5" stroke-dasharray="8 6"/><circle cx="95" cy="74" r="12" fill="#5c7ee2"/><circle cx="265" cy="74" r="12" fill="#8d6bd5"/><line x1="95" y1="74" x2="265" y2="74" stroke="#95a2b6" stroke-width="2" stroke-dasharray="5 4"/><text x="85" y="47" font-size="15">A</text><text x="260" y="47" font-size="15">A′</text>`, '到對稱軸的垂直距離相等');
+ if(v.includes('operation')||v.includes('left_to_right'))return shell(`<rect x="35" y="48" width="82" height="48" rx="12" fill="#e9efff"/><rect x="139" y="48" width="82" height="48" rx="12" fill="#fff0cf"/><rect x="243" y="48" width="82" height="48" rx="12" fill="#e8f7ee"/><text x="54" y="78" font-size="15" font-weight="900">① 括號</text><text x="155" y="78" font-size="15" font-weight="900">② × ÷</text><text x="262" y="78" font-size="15" font-weight="900">③ + −</text>`, '同級運算從左到右');
+ if(v.includes('trapezoid')){let top='8',bot='14',h='6';if(v.includes('6_10_4')){top='6';bot='10';h='4'}if(v.includes('9_15_8')){top='9';bot='15';h='8'}return shell(`<polygon points="110,35 240,35 295,115 65,115" fill="#fff3d9" stroke="#d99b30" stroke-width="3"/><line x1="110" y1="35" x2="110" y2="115" stroke="#5c7ee2" stroke-width="3" stroke-dasharray="6 5"/><path d="M110 115 h15 v-15" fill="none" stroke="#5c7ee2" stroke-width="2"/><text x="168" y="28" font-size="14">${top}</text><text x="170" y="136" font-size="14">${bot}</text><text x="82" y="82" font-size="14">高 ${h}</text>`, '梯形面積');}
+ if(v.includes('triangle_area')||v.includes('triangle_unknown'))return shell(`<polygon points="70,115 285,115 175,30" fill="#eaf0ff" stroke="#5b79d7" stroke-width="3"/><line x1="175" y1="30" x2="175" y2="115" stroke="#e7a338" stroke-width="3" stroke-dasharray="6 4"/><path d="M175 115 h15 v-15" fill="none" stroke="#e7a338" stroke-width="2"/><text x="160" y="137" font-size="13">底</text><text x="184" y="75" font-size="13">高</text>`, '底 × 高 ÷ 2');
+ if(v.includes('para_area'))return shell(`<polygon points="90,35 265,35 300,115 125,115" fill="#e8f5ed" stroke="#4c9a70" stroke-width="3"/><line x1="125" y1="35" x2="125" y2="115" stroke="#e7a338" stroke-width="3" stroke-dasharray="6 4"/><text x="175" y="136" font-size="13">底 12</text><text x="133" y="78" font-size="13">高 7</text>`, '平行四邊形面積');
+ if(v.includes('sphere'))return shell(`<defs><radialGradient id="sg"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#88a9e8"/></radialGradient></defs><circle cx="180" cy="72" r="50" fill="url(#sg)" stroke="#4568bd" stroke-width="3"/><ellipse cx="180" cy="72" rx="50" ry="16" fill="none" stroke="#7d94c5" stroke-dasharray="5 4"/>`, '球：沒有稜、沒有頂點');
+ if(v.includes('cone'))return shell(`<ellipse cx="180" cy="112" rx="60" ry="18" fill="#ffe7b8" stroke="#d99b30" stroke-width="3"/><path d="M120 112 L180 25 L240 112" fill="#fff3d9" stroke="#d99b30" stroke-width="3"/><circle cx="180" cy="25" r="4" fill="#263e78"/>`, '圓錐只有 1 個頂點');
+ if(v.includes('prism')||v.includes('rect_prism'))return shell(`<polygon points="90,45 205,45 255,75 140,75" fill="#eef3ff" stroke="#5978d2" stroke-width="3"/><polygon points="90,45 140,75 140,125 90,95" fill="#e2eaff" stroke="#5978d2" stroke-width="3"/><polygon points="140,75 255,75 255,125 140,125" fill="#f6f8ff" stroke="#5978d2" stroke-width="3"/><line x1="205" y1="45" x2="205" y2="95" stroke="#5978d2" stroke-width="3" stroke-dasharray="5 4"/><line x1="205" y1="95" x2="255" y2="125" stroke="#5978d2" stroke-width="3" stroke-dasharray="5 4"/><line x1="90" y1="95" x2="205" y2="95" stroke="#5978d2" stroke-width="3" stroke-dasharray="5 4"/>`, '先數面、稜、頂點');
+ if(v.includes('bottles'))return shell(`<text x="70" y="90" font-size="64">🧴</text><text x="160" y="80" font-size="34">＋</text><text x="225" y="90" font-size="64">🧴</text>`, '容量相加，小數點要對齊');
+ if(v.includes('ribbons'))return shell(`<rect x="40" y="42" width="250" height="18" rx="8" fill="#7f9be6"/><rect x="40" y="85" width="300" height="18" rx="8" fill="#f1b34b"/>${[90,140,190,240,290].map(x=>`<line x1="${x}" y1="35" x2="${x}" y2="110" stroke="#fff" stroke-width="3"/>`).join('')}`, '剪成一樣長而且沒有剩');
+ return shell(`<rect x="45" y="35" width="270" height="75" rx="18" fill="#eef4ff"/><text x="180" y="72" text-anchor="middle" font-size="30">🧠 ✏️ 📐</text><text x="180" y="99" text-anchor="middle" font-size="14">先看圖，再找題目要問什麼</text>`,'');
+}
+
 function deepVisual(type){
  const m={
   place_value:placeValueDeepLab,decimal_compare_deep:decimalCompareDeep,decimal_align:decimalAlignDeep,rounding_line:roundingDeep,decimal_life:decimalLifeDeep,

@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#183773">
   <meta name="description" content="五年級上學期數學冒險：今天只玩一個挑戰關卡，闖關拿星星、累積冒險分數。">
-  <title>五年級數學冒險 0.7.0</title><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="assets/img/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="assets/css/app.css?v=0.7.0">
+  <title>五年級數學冒險 0.8.0</title><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="assets/img/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="assets/css/app.css?v=0.8.0">
 </head>
 <body class="home simpleHome"><main class="homeWrap">
-<header class="homeTop"><div class="brand"><div class="brandMark">5</div><div><b>五年級數學冒險</b><small>上學期・0.7.0</small></div></div><button onclick="G5Account.openPanel()" class="startMini"><span data-account-name>登入</span></button></header>
+<header class="homeTop"><div class="brand"><div class="brandMark">5</div><div><b>五年級數學冒險</b><small>上學期・0.8.0</small></div></div><button onclick="G5Account.openPanel()" class="startMini"><span data-account-name>登入</span></button></header>
 <section class="homeHero kidHero"><div class="eyebrow">TODAY'S QUEST</div><h1>今天只玩<strong>一個小關卡</strong></h1><p data-voice>不用先看完整學期。今天先完成一個小關卡，答對題目、拿星星、累積冒險分數；想多玩一點時，再進冒險章節。</p><div class="heroActions"><a class="startBtn megaStart" id="todayStart" href="math.html?mode=today">🎯 開始今天任務</a><a class="ghostBtn" id="continueChapter" href="math.html?mode=chapter">🎮 冒險章節</a></div></section>
 <section class="homeRewardBoard" aria-label="冒險成績板">
   <div class="scoreOrb"><small>冒險分數</small><b id="homeXp">0</b><span>XP</span></div>
   <div class="homeStat"><span>⭐</span><div><small>已拿星星</small><b id="homeStars">0</b></div></div>
   <div class="homeStat"><span>🔥</span><div><small>最佳連勝</small><b id="homeCombo">0</b></div></div>
-  <div class="homeStat"><span>🏅</span><div><small>已過關</small><b id="homeDone">0</b></div></div>
+  <div class="homeStat"><span>🏅</span><div><small>已通過站點</small><b id="homeDone">0</b></div></div>
 </section>
 <section class="homeCard currentQuestCard">
   <div class="sectionTag">YOUR NEXT QUEST</div><div class="currentQuestTop"><div><h2 id="homeQuestTitle">今天的小任務</h2><p id="homeQuestText">先過 1 個小關，再決定要不要繼續。</p></div><div class="bigStars" id="homeChapterStars"><span>☆</span><span>☆</span><span>☆</span></div></div>
@@ -21,9 +21,9 @@
 </section>
 <section class="homeCard simpleTip"><div><b>🔊 看到喇叭就可以聽</b><p>重要定義、例題和題目都會盡量提供朗讀。先聽懂題目，再開始動腦。</p></div><div><b>🩹 答錯不扣星</b><p>錯題會進修復區；修正成功也會得到獎勵。</p></div></section>
 </main>
-<script src="assets/js/account.js?v=0.7.0"></script><script src="assets/js/voice.js?v=0.7.0"></script>
+<script src="assets/js/account.js?v=0.8.0"></script><script src="assets/js/voice.js?v=0.8.0"></script>
 <script>
 function homeStarsFor(p,uid){if(!p.completed?.[uid])return 0;const n=Object.keys(p.correct||{}).filter(k=>k.startsWith(uid+'_')&&p.correct[k]).length;return 1+(n>=3?1:0)+(n>=6?1:0)}
-function renderHome(){G5Account.boot({promptIfMissing:false});const p=G5Account.progress()||{},uid=p.lastUnit||'u01',num=Math.max(1,Math.min(10,Number(uid.slice(1))||1));const titles=['多位小數與加減','因數與公因數','倍數與公倍數','擴分・約分・通分','多邊形與扇形','異分母分數加減','線對稱圖形','整數四則運算','面積','柱體・錐體・球'];let stars=0,done=0;for(let i=1;i<=10;i++){const id='u'+String(i).padStart(2,'0');stars+=homeStarsFor(p,id);if(p.completed?.[id])done++}const cs=homeStarsFor(p,uid);document.getElementById('homeXp').textContent=Number(p.xp)||0;document.getElementById('homeStars').textContent=stars;document.getElementById('homeCombo').textContent=Number(p.comboBest)||0;document.getElementById('homeDone').textContent=done+'/10';document.getElementById('homeQuestTitle').textContent=`第 ${num} 章・${titles[num-1]}`;document.getElementById('homeQuestText').textContent=cs<3?`目前 ${cs}/3 星。今天先完成一個挑戰關卡。`:'這章已三星！可以進下一關或回頭挑戰 Boss。';document.getElementById('homeChapterStars').innerHTML=[1,2,3].map(i=>`<span class="${i<=cs?'on':''}">${i<=cs?'★':'☆'}</span>`).join('');['todayStart','homeContinue'].forEach(id=>document.getElementById(id).href=`math.html?unit=${uid}&mode=today`);document.getElementById('continueChapter').href=`math.html?unit=${uid}&mode=chapter`}
+function renderHome(){G5Account.boot({promptIfMissing:false});const p=G5Account.progress()||{},uid=p.lastUnit||'u01',num=Math.max(1,Math.min(10,Number(uid.slice(1))||1));const titles=['多位小數與加減','因數與公因數','倍數與公倍數','擴分・約分・通分','多邊形與扇形','異分母分數加減','線對稱圖形','整數四則運算','面積','柱體・錐體・球'];let stars=0,done=0;for(let i=1;i<=10;i++){const id='u'+String(i).padStart(2,'0');stars+=homeStarsFor(p,id);if(p.completed?.[id])done++}const cs=homeStarsFor(p,uid);document.getElementById('homeXp').textContent=Number(p.xp)||0;document.getElementById('homeStars').textContent=stars;document.getElementById('homeCombo').textContent=Number(p.comboBest)||0;const exams=p.examScores||{},mid=['midterm_A','midterm_B'].some(k=>Number(exams[k]?.attempts||0)>0),fin=['final_A','final_B'].some(k=>Number(exams[k]?.attempts||0)>0);document.getElementById('homeDone').textContent=(done+(mid?1:0)+(fin?1:0))+'/12';document.getElementById('homeQuestTitle').textContent=`第 ${num} 章・${titles[num-1]}`;document.getElementById('homeQuestText').textContent=cs<3?`目前 ${cs}/3 星。今天先完成一個挑戰關卡。`:'這章已三星！可以進下一關或回頭挑戰 Boss。';document.getElementById('homeChapterStars').innerHTML=[1,2,3].map(i=>`<span class="${i<=cs?'on':''}">${i<=cs?'★':'☆'}</span>`).join('');['todayStart','homeContinue'].forEach(id=>document.getElementById(id).href=`math.html?unit=${uid}&mode=today`);document.getElementById('continueChapter').href=`math.html?unit=${uid}&mode=chapter`}
 document.addEventListener('DOMContentLoaded',renderHome);window.addEventListener('g5-account-changed',renderHome);
 </script></body></html>

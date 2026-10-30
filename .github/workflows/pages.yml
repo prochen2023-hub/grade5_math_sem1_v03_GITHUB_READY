@@ -35,7 +35,9 @@ jobs:
         run: node scripts/interaction_test.js
       - name: Test v0.7 child adventure flow
         run: python scripts/v07_content_test.py
-      - name: Test A/B monthly exam shell
+      - name: Test v0.8 12-station boss-exam flow
+        run: python scripts/v08_content_test.py
+      - name: Test A/B midterm/final 100-point exam engine
         run: node scripts/exam_test.js
       - name: Check JavaScript syntax
         run: node --check assets/js/app.js && node --check assets/js/voice.js

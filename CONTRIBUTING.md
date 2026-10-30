@@ -11,6 +11,9 @@
 - 錯誤選項反映常見迷思，不故意刁鑽。
 - 不以倒扣、羞辱、排行榜壓力刺激學習。
 - 互動圖與文字不要擁擠；手機仍須可操作。
+- A/B/C/D 五題挑戰必須保持可預覽，不可重新加入鎖定流程。
+- 期中／期末考卷每卷固定 100 分，四大題型配分需保持 20＋20＋24＋36。
+- 模擬考題目必須原創；可參考公開試卷的「題型與版面」，不可直接抄題。
 - 新增題目後檢查答案、單位、數值合理性與 JSON 格式。
 
 ## 提交前檢查
@@ -19,7 +22,9 @@
 python scripts/validate_project.py
 node scripts/smoke_test.js
 node scripts/interaction_test.js
-python scripts/v06_content_test.py
+python scripts/v07_content_test.py
+python scripts/v08_content_test.py
+node scripts/exam_test.js
 node --check assets/js/app.js
 node --check assets/js/voice.js
 ```

@@ -14,11 +14,11 @@ for u in units:
         assert q['text'].strip() and len(q['options'])>=3
         assert 0<=q['answer']<len(q['options'])
 js=(ROOT/'assets/js/app.js').read_text(encoding='utf-8')
-for token in ['storySceneHtml','AI 休息站','MASTERY_LEVELS=["A","B","C","D"]','masteryLevelHtml','questionVisual','月考 A 卷','月考 B 卷','20*60*1000','ringBell','故事完結篇']:
+for token in ['storySceneHtml','AI 休息站','MASTERY_LEVELS=["A","B","C","D"]','masteryLevelHtml','questionVisual','ringBell','故事完結篇']:
     assert token in js, token
 for stale in ['本章核心觀念地圖','錯誤診療室','題分層練習｜生活活用為主']:
     assert stale not in js, stale
 home=(ROOT/'index.html').read_text(encoding='utf-8')
 assert 'unitMap' not in home
 assert '一個小關卡' in home
-print('V07 CONTENT OK: 10 units, >=20 bank questions each, 5-question level system, story flow, AI rest, A/B timed exam')
+print('V07 BASELINE OK: 10 units, >=20 bank questions each, 5-question level system, story flow, AI rest')
