@@ -1,6 +1,6 @@
 {
   "project": "國小五年級上學期數學",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "release_name": "圖解互動深化版",
   "curriculum_note": "跨版本共通概念骨架；單元順序採常見五上架構，可後續切換康軒／翰林／南一。",
   "progress_namespace": "g5m1",

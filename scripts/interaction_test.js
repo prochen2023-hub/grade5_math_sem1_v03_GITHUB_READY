@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* v0.4 interaction-logic regression test: exercise diagram generators without a real browser. */
+/* v0.5 interaction-logic regression test: exercise key diagram generators without a real browser. */
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.resolve(__dirname,'..');
 const dummy={textContent:'',innerHTML:'',value:'',style:{},classList:{add(){},remove(){},toggle(){}},addEventListener(){}};
@@ -21,4 +21,16 @@ assert(ctx.areaSvg('trapezoid',8,5,5).includes('上底到下底的垂直距離')
 assert(ctx.solidPanel('sphere',5,5,0).includes('沒有稜、沒有頂點'),'sphere features missing');
 assert(ctx.solidPanel('cone',5,5,15).includes('圓錐')&&ctx.solidPanel('cone',5,5,15).includes('頂點'),'cone 3D panel failed');
 for(const t of ['prism','cylinder','pyramid','cone','sphere']) assert(ctx.solidSvg(t,5,5,0).includes('<svg'),'solid SVG missing '+t);
-console.log('INTERACTION TEST OK: v0.4 concept diagrams and calculations');
+
+// v0.5 first-five deep concepts
+assert(ctx.placeValueReadout([3,0,5,0,4,2,7,0,8,6]).includes('305,042.7086'),'place-value composition failed');
+assert(ctx.roundingPanel(12.347,2).includes('12.35'),'rounding to hundredths failed');
+assert(ctx.roundingPanel(8.764,1).includes('8.8'),'rounding to tenths failed');
+assert(ctx.divisibilityPanel(24,6).includes('可以整除')&&ctx.divisibilityPanel(24,5).includes('不能整除'),'divisibility model failed');
+assert(ctx.interiorSumPanel(6).includes('720°'),'polygon interior-sum decomposition failed');
+assert(ctx.triangleIneqPanel(3,4,8).includes('無法合攏')&&ctx.triangleIneqPanel(4,6,9).includes('可以形成三角形'),'triangle inequality failed');
+assert(ctx.specialTriPanel('isosceles',40).includes('70°'),'isosceles angle calculation failed');
+assert(ctx.parallelogramPanel(70).includes('110°'),'parallelogram adjacent-angle calculation failed');
+assert(ctx.trapezoidPanel(72,'general').includes('108°'),'trapezoid same-leg supplementary angles failed');
+for(let i=0;i<12;i++) assert(ctx.angleDiagram(i).includes('<svg'),`mixed-angle diagram ${i+1} missing`);
+console.log('INTERACTION TEST OK: v0.5 concept diagrams and calculations');

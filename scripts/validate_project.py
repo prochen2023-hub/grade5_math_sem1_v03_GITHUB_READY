@@ -35,9 +35,26 @@ for u in units:
     check_mc(u.get('challenge',{}),f'{uid}.challenge')
     if len(u.get('worked',{}).get('steps',[]))<3: errors.append(f'{uid}.worked: steps 至少 3 步')
     qs=bank.get(uid,[])
-    if len(qs)!=10: errors.append(f'{uid}: 練習題預期 10 題，實際 {len(qs)}')
+    min_q={'u01':18,'u02':16,'u03':16,'u04':16,'u05':32}.get(uid,10)
+    if len(qs)<min_q: errors.append(f'{uid}: 練習題至少 {min_q} 題，實際 {len(qs)}')
     life=sum(q.get('type')=='life' for q in qs)
     if life < 5: errors.append(f'{uid}: 生活題少於 5 題')
+    if uid in {'u01','u02','u03','u04','u05'}:
+        ls=u.get('today_lessons',[])
+        if len(ls)<5: errors.append(f'{uid}: 今日核心觀念卡少於 5 張')
+        for j,L in enumerate(ls):
+            for k in ('title','definition','focus','visual','q','options','answer','explain'):
+                if k not in L: errors.append(f'{uid}.today_lessons[{j}]: 缺少 {k}')
+            if isinstance(L.get('options'),list) and (not isinstance(L.get('answer'),int) or not 0<=L.get('answer',-1)<len(L.get('options',[]))):
+                errors.append(f'{uid}.today_lessons[{j}]: answer 超出範圍')
+    if uid=='u04':
+        for skill in ('擴分','約分','通分'):
+            calc=sum(q.get('skill')==skill and q.get('type')=='concept' for q in qs)
+            life_skill=sum(q.get('skill')==skill and q.get('type')=='life' for q in qs)
+            if calc<2 or life_skill<2: errors.append(f'u04: {skill} 需至少 2 題計算＋2 題生活題，實際 {calc}+{life_skill}')
+    if uid=='u05':
+        mixed=sum(q.get('skill') in ('複合角度','星型/交疊','飛鏢型') for q in qs)
+        if mixed<10: errors.append(f'u05: 複合角度組合題少於 10 題，實際 {mixed}')
     for q in qs:
         qid=q.get('id','?')
         if qid in seen: errors.append(f'題目 ID 重複: {qid}')

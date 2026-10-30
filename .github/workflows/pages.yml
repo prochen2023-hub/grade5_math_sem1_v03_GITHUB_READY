@@ -31,8 +31,10 @@ jobs:
         run: python scripts/validate_project.py
       - name: Smoke test interactive rendering
         run: node scripts/smoke_test.js
-      - name: Test v0.4 diagram logic
+      - name: Test diagram logic
         run: node scripts/interaction_test.js
+      - name: Test v0.5 first-five deep content
+        run: python scripts/v05_content_test.py
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
