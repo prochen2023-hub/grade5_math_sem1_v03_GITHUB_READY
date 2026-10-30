@@ -1,28 +1,25 @@
 # Contributing
 
-本專案目前以「國小五年級孩子能自行理解」為第一優先。
+本專案以「國小五年級孩子願意繼續玩，而且能自行理解」為第一優先。
 
 修改內容時請遵守：
 
-- 先說情境，再問數學，不把冗長文字包裝成假素養題。
-- 一題只測一個主要概念；若需要多步驟，步驟要自然且可解釋。
-- 錯誤選項應反映常見迷思，不使用故意刁鑽或語意模糊的選項。
+- 首頁保持簡單，不一次攤開整學期章節。
+- 一張今日卡只教一個主要概念。
+- 重要定義、例題與題目盡量加 `data-voice`，讓語音按鈕出現在框格起始。
+- 先說情境，再問數學；不要把冗長文字包裝成假素養題。
+- 錯誤選項反映常見迷思，不故意刁鑽。
 - 不以倒扣、羞辱、排行榜壓力刺激學習。
-- 互動圖與文字不要擁擠；手機畫面仍須可操作。
-- 新增題目後要檢查答案、單位、數值合理性與 JSON 格式。
-
-題目與單元資料格式見 `docs/CONTENT_GUIDE.md`。
+- 互動圖與文字不要擁擠；手機仍須可操作。
+- 新增題目後檢查答案、單位、數值合理性與 JSON 格式。
 
 ## 提交前檢查
-
-v0.5 起請先在 repository root 執行：
 
 ```bash
 python scripts/validate_project.py
 node scripts/smoke_test.js
 node scripts/interaction_test.js
-python scripts/v05_content_test.py
+python scripts/v06_content_test.py
 node --check assets/js/app.js
+node --check assets/js/voice.js
 ```
-
-驗證會檢查章節與題目必要欄位、答案索引、題目 ID、生活題比例與本機 HTML 連結。GitHub Pages workflow 在部署前也會自動執行內容驗證、10 章渲染 smoke test 、圖解邏輯測試與 v0.5 前五章深度內容測試。

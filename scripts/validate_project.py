@@ -35,11 +35,11 @@ for u in units:
     check_mc(u.get('challenge',{}),f'{uid}.challenge')
     if len(u.get('worked',{}).get('steps',[]))<3: errors.append(f'{uid}.worked: steps 至少 3 步')
     qs=bank.get(uid,[])
-    min_q={'u01':18,'u02':16,'u03':16,'u04':16,'u05':32}.get(uid,10)
+    min_q={'u01':18,'u02':16,'u03':16,'u04':16,'u05':32,'u06':18,'u07':18,'u08':18,'u09':18,'u10':18}.get(uid,16)
     if len(qs)<min_q: errors.append(f'{uid}: 練習題至少 {min_q} 題，實際 {len(qs)}')
     life=sum(q.get('type')=='life' for q in qs)
     if life < 5: errors.append(f'{uid}: 生活題少於 5 題')
-    if uid in {'u01','u02','u03','u04','u05'}:
+    if uid in {'u01','u02','u03','u04','u05','u06','u07','u08','u09','u10'}:
         ls=u.get('today_lessons',[])
         if len(ls)<5: errors.append(f'{uid}: 今日核心觀念卡少於 5 張')
         for j,L in enumerate(ls):

@@ -1,7 +1,9 @@
 const $=id=>document.getElementById(id);
 let UNITS=[],BANK={},current="u01",showFull=false,practiceFilter="all",progress={};
 let viewMode="chapter",lessonIndex=0,pendingFocus="";
-const DEFAULT_PROGRESS={completed:{},correct:{},attempts:{},mistakes:{},challenge:{},todayLessons:{},xp:0,lastUnit:"u01",combo:0,comboBest:0,lifeCorrect:0,fixedMistakes:0,hintsUsed:0,daily:{date:"",correct:0,units:0}};
+let masteryLevel="A",examSession=null,examTicker=null;
+const MASTERY_LEVELS=["A","B","C","D"];
+const DEFAULT_PROGRESS={completed:{},correct:{},attempts:{},mistakes:{},challenge:{},todayLessons:{},examAwards:{},xp:0,lastUnit:"u01",combo:0,comboBest:0,lifeCorrect:0,fixedMistakes:0,hintsUsed:0,daily:{date:"",correct:0,units:0}};
 async function getJSON(p){const r=await fetch(p);if(!r.ok)throw new Error(p);return r.json()}
 document.addEventListener("DOMContentLoaded",()=>init().catch(showBootError));
 function showBootError(err){
@@ -13,7 +15,7 @@ function showBootError(err){
 function todayKey(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
 function normalizeProgress(p={}){
  const x={...DEFAULT_PROGRESS,...p};
- x.completed={...(p.completed||{})};x.correct={...(p.correct||{})};x.attempts={...(p.attempts||{})};x.mistakes={...(p.mistakes||{})};x.challenge={...(p.challenge||{})};x.todayLessons={...(p.todayLessons||{})};
+ x.completed={...(p.completed||{})};x.correct={...(p.correct||{})};x.attempts={...(p.attempts||{})};x.mistakes={...(p.mistakes||{})};x.challenge={...(p.challenge||{})};x.todayLessons={...(p.todayLessons||{})};x.examAwards={...(p.examAwards||{})};
  x.xp=Number(x.xp)||0;x.combo=Number(x.combo)||0;x.comboBest=Number(x.comboBest)||0;x.lifeCorrect=Number(x.lifeCorrect)||0;x.fixedMistakes=Number(x.fixedMistakes)||0;x.hintsUsed=Number(x.hintsUsed)||0;
  x.daily={date:p.daily?.date||"",correct:Number(p.daily?.correct)||0,units:Number(p.daily?.units)||0};
  if(x.daily.date!==todayKey())x.daily={date:todayKey(),correct:0,units:0};
@@ -38,7 +40,7 @@ function bindShell(){
 }
 function save(){progress.lastUnit=current;G5Account.saveProgress(progress);renderRewards()}
 function selectUnit(id,scroll=true,mode="chapter"){
- G5Voice?.stop?.();current=id;viewMode=mode;lessonIndex=0;progress.lastUnit=id;save();showFull=false;practiceFilter="all";
+ G5Voice?.stop?.();current=id;viewMode=mode;lessonIndex=0;progress.lastUnit=id;save();showFull=false;practiceFilter="all";masteryLevel="A";stopExamClock();examSession=null;
  renderNav();renderUnit();syncRoute();if(scroll)window.scrollTo({top:0,behavior:"smooth"});document.body.classList.remove("menuOpen")
 }
 function doneCount(){return Object.values(progress.completed).filter(Boolean).length}
@@ -81,6 +83,8 @@ function renderRewards(){
  if($("topReward"))$("topReward").textContent=`Lv.${lv}・${progress.xp} XP・${stars}⭐`;
  if($("unitStarStatus"))$("unitStarStatus").textContent=`${unitStars(current)}/3 星`;
  if($("chapterBadge")){const u=UNITS.find(x=>x.id===current),on=!!progress.completed[current];$("chapterBadge").classList.toggle("on",on);if($("chapterBadgeStatus"))$("chapterBadgeStatus").textContent=on?"已解鎖":"完成本章解鎖"}
+ const cs=unitStars(current);if($("chapterStarsBig"))$("chapterStarsBig").innerHTML=[1,2,3].map(i=>`<span class="${i<=cs?"on":""}">${i<=cs?"★":"☆"}</span>`).join("");
+ if($("chapterStarNext"))$("chapterStarNext").textContent=cs===0?"答對生活任務 → 第 1 顆星":cs===1?"練習累積答對 3 題 → 第 2 顆星":cs===2?"練習累積答對 6 題 → 第 3 顆星":"⭐⭐⭐ 三星達成！可以挑戰 Boss";
 }
 function renderNav(){
  const nav=$("unitNav");if(!nav)return;
@@ -88,62 +92,53 @@ function renderNav(){
  renderRewards()
 }
 function renderUnit(){
- const u=UNITS.find(x=>x.id===current),qs=chapterPractice(current),allQs=BANK[current]||[],stars=unitStars(current),wrongN=unresolvedMistakes(current);
+ const u=UNITS.find(x=>x.id===current),stars=unitStars(current),wrongN=unresolvedMistakes(current);
  if(viewMode==="today"){renderToday(u);return}
- $("unitTitle").textContent=`${u.emoji} ${u.title}`;$("unitSub").textContent=`完整章節｜${u.hook}`;
+ $("unitTitle").textContent=`${u.emoji} ${u.title}`;$("unitSub").textContent=`冒險章節｜一關一關玩，不用一次看完`;
  $("main").innerHTML=`
- <section class="questCard heroCard" data-voice>
-  <div class="eyebrow">LEVEL ${UNITS.findIndex(x=>x.id===current)+1}・今天只懂一件事</div><h2>${u.hook}</h2><p>${u.draw_first}</p>
-  <div class="keywordRow">${(u.keywords||[]).map(k=>`<span>${k}</span>`).join("")}</div>
+ <section class="questCard heroCard levelHero" data-voice>
+  <div class="eyebrow">LEVEL ${UNITS.findIndex(x=>x.id===current)+1}・${u.emoji} ${u.title}</div><h2>${u.hook}</h2><p>今天不用把整章都背起來。跟著故事走，每次只過一關；卡住也沒關係，AI 休息站會陪你整理。</p>
+  <div class="keywordRow">${(u.keywords||[]).slice(0,4).map(k=>`<span>${k}</span>`).join("")}</div>
  </section>
- <section class="questCard warmupCard">
-  <div class="cardHead"><div><span class="step">⚡</span><h3>10 秒起點快問</h3></div><small>先想，不算分</small></div>
+ ${storySceneHtml(u)}
+ <section class="questCard warmupCard checkpointCard" data-voice>
+  <div class="cardHead"><div><span class="step">⚡</span><h3>暖身關｜先猜猜看</h3></div><small>不算分，猜錯也沒關係</small></div>
   <div class="diagnosticQ" data-voice><b>${u.warmup.q}</b></div><div class="choices compact">${u.warmup.options.map((o,i)=>`<button onclick="checkWarmup(${i})">${String.fromCharCode(65+i)}. ${o}</button>`).join("")}</div><div id="warmupFb" class="feedback"></div>
  </section>
- <section class="questCard storyCard" data-voice>
-  <div class="cardHead"><div><span class="step">🎬</span><h3>先進入故事</h3></div><small>先知道為什麼要學</small></div>
-  <p class="storyLead">${u.story}</p>
-  <div class="missionBox"><b>${u.mission.title}</b><p>${u.mission.scene}</p><ol>${u.mission.steps.map(x=>`<li>${x}</li>`).join("")}</ol></div>
+ <section class="questCard challengeStage stageOne" data-voice>
+  <div class="cardHead"><div><span class="step">1</span><h3>挑戰關卡 1｜先用眼睛看懂</h3></div><small>動手玩 30 秒</small></div><div class="labWrap">${mainLab(u.lab)}</div>
  </section>
- <section class="questCard">
-  <div class="cardHead"><div><span class="step">1</span><h3>先玩圖，不背公式</h3></div><small>動手 30 秒</small></div><div class="labWrap">${mainLab(u.lab)}</div>
+ <section class="questCard coachCard challengeStage stageTwo" data-voice>
+  <div class="cardHead"><div><span class="step">2</span><h3>挑戰關卡 2｜把剛才的發現說出來</h3></div></div><p class="bigSay">${u.say}</p><p class="life">生活裡：${u.life}</p><div class="memoryStrip"><span>🎒 帶走一句話</span><b>${u.memory}</b></div>
  </section>
- <section class="questCard coachCard" data-voice>
-  <div class="cardHead"><div><span class="step">2</span><h3>用人話說一次</h3></div></div><p class="bigSay">${u.say}</p><p class="life">生活裡：${u.life}</p><div class="memoryStrip"><span>🧠 一句記住</span><b>${u.memory}</b></div>
+ <section class="questCard workedCard challengeStage stageThree" data-voice>
+  <div class="cardHead"><div><span class="step">3</span><h3>${u.worked.title}</h3></div><small>跟著角色一起解</small></div>
+  <div class="workedProblem">${u.worked.problem}</div><div class="workedSteps">${u.worked.steps.map((x,i)=>`<div><span>${i+1}</span><p>${x}</p></div>`).join("")}</div><div class="reasonCheck"><b>🔎 主角的最後檢查</b><p>${u.worked.check}</p></div>
  </section>
- <section class="questCard workedCard" data-voice>
-  <div class="cardHead"><div><span class="step">3</span><h3>${u.worked.title}</h3></div><small>看懂每一步為什麼</small></div>
-  <div class="workedProblem">${u.worked.problem}</div><div class="workedSteps">${u.worked.steps.map((x,i)=>`<div><span>${i+1}</span><p>${x}</p></div>`).join("")}</div><div class="reasonCheck"><b>🔎 合理性檢查</b><p>${u.worked.check}</p></div>
- </section>
- <section class="questCard">
-  <div class="cardHead"><div><span class="step">4</span><h3>再玩一個小實驗</h3></div><small>換角度再看一次</small></div><div class="labWrap">${miniLab(u.mini)}</div>
+ <section class="questCard challengeStage stageFour" data-voice>
+  <div class="cardHead"><div><span class="step">4</span><h3>挑戰關卡 4｜換個玩法再試一次</h3></div><small>不用背，玩過就好</small></div><div class="labWrap">${miniLab(u.mini)}</div>
  </section>
  ${deepChapterHtml(u)}
- <section class="questCard clinicCard">
-  <div class="cardHead"><div><span class="step">🩺</span><h3>錯誤診療室</h3></div><small>看懂錯法，比抄答案重要</small></div>
-  <p class="clinicRule">${u.error_clinic.rule}</p><div data-voice class="taskQ"><b>${u.error_clinic.q}</b></div><div class="choices compact">${u.error_clinic.options.map((o,i)=>`<button onclick="checkClinic(${i})">${String.fromCharCode(65+i)}. ${o}</button>`).join("")}</div><div id="clinicFb" class="feedback"></div>
+ <section class="questCard taskCard ${progress.completed[u.id]?"passed":""}" data-voice>
+  <div class="cardHead"><div><span class="step">🎯</span><h3>故事任務｜幫主角解開難題</h3></div><small>${progress.completed[u.id]?"✓ 已完成":"首次 +25 XP"}</small></div>${taskHtml(u)}
  </section>
- <section class="questCard taskCard ${progress.completed[u.id]?"passed":""}">
-  <div class="cardHead"><div><span class="step">5</span><h3>生活任務：答對就過關</h3></div><small>${progress.completed[u.id]?"✓ 已過關":"首次 +25 XP"}</small></div>${taskHtml(u)}
- </section>
+ ${aiRestHtml(u)}
  <section class="questCard rewardUnitCard">
-  <div class="cardHead"><div><span class="step">🏅</span><h3>這章的獎勵</h3></div><small id="unitStarStatus">${stars}/3 星</small></div>
-  <div class="unitRewardGrid"><div id="chapterBadge" class="chapterBadge ${progress.completed[u.id]?"on":""}"><span>${u.badge.emoji}</span><b>${u.badge.name}</b><small id="chapterBadgeStatus">${progress.completed[u.id]?"已解鎖":"完成本章解鎖"}</small></div><div><b>⭐ 星星規則</b><p>過關 1⭐・練習答對 3 題 2⭐・答對 6 題 3⭐</p><p class="mistakeStatus">🩹 本章待修錯題：${wrongN} 題</p></div></div>
+  <div class="cardHead"><div><span class="step">🏅</span><h3>冒險收穫</h3></div><small id="unitStarStatus">${stars}/3 星</small></div>
+  <div class="unitRewardGrid"><div id="chapterBadge" class="chapterBadge ${progress.completed[u.id]?"on":""}"><span>${u.badge.emoji}</span><b>${u.badge.name}</b><small id="chapterBadgeStatus">${progress.completed[u.id]?"已解鎖":"完成故事任務解鎖"}</small></div><div class="starRoad"><b>⭐ 星星是你的冒險紀錄</b><div class="starSteps"><div class="${stars>=1?'on':''}"><span>⭐</span><strong>1 星</strong><small>完成故事任務</small></div><div class="${stars>=2?'on':''}"><span>⭐</span><strong>2 星</strong><small>闖關累積答對 3 題</small></div><div class="${stars>=3?'on':''}"><span>⭐</span><strong>3 星</strong><small>闖關累積答對 6 題</small></div></div><p class="scoreRule">答錯不扣星、不扣 XP。會了很棒；還不會也可以先往前玩。</p><p class="mistakeStatus">🩹 目前有 ${wrongN} 題可以之後回來修復。</p></div></div>
  </section>
- <section class="questCard whyCard ${showFull?"":"hidden"}" id="fullLesson">
-  <div class="cardHead"><div><span class="step">+</span><h3>完整學習與精熟區</h3></div><small>目標 → Boss → 分層練習</small></div>
-  <div class="goalGrid">${(u.goals||[]).map((x,i)=>`<div><b>目標 ${i+1}</b><p>${x}</p></div>`).join("")}</div>
-  <div class="trapBox" data-voice><b>⚠️ 最常掉進的坑</b><p>${u.pitfall}</p></div>
-  <div class="whyGrid">${u.why.map((x,i)=>`<div data-voice><b>${["為什麼？","再看一層","最後連起來"][i]||"重點"}</b><p>${x}</p></div>`).join("")}</div>
-  ${challengeHtml(u)}
-  <div class="practiceHead"><div><h3 class="practiceTitle">${allQs.length} 題分層練習｜生活活用為主</h3><p class="practiceHint">先讀情境，圈出「已知、要找、單位」，再選數學工具；卡住可以看提示，不扣分。</p></div><div class="filterBtns"><button class="${practiceFilter==='all'?'on':''}" onclick="setPracticeFilter('all')">全部 ${allQs.length}</button><button class="${practiceFilter==='life'?'on':''}" onclick="setPracticeFilter('life')">🏙️ 生活題</button><button class="${practiceFilter==='mistake'?'on':''}" onclick="setPracticeFilter('mistake')">🩹 錯題 ${wrongN}</button></div></div>
-  <div class="practiceList">${qs.length?qs.map((q,i)=>practiceHtml(q,i)).join(""):`<div class="emptyPractice">🎉 目前沒有待修錯題。遇到答錯的題目，會自動收進這裡。</div>`}</div>
+ <section class="questCard masteryGate ${showFull?"":"hidden"}" id="fullLesson">
+   <div class="cardHead"><div><span class="step">🎮</span><h3>加碼冒險區</h3></div><small>一次只出現 5 題</small></div>
+   <p class="masteryLead">不用全部會才厲害。選一個等級，玩 5 題就休息；答對 3 題就算成功闖關。</p>
+   ${masteryLevelTabs(u.id)}
+   ${masteryLevelHtml(u)}
+   ${chapterFinaleHtml(u)}
+   ${examArenaHtml()}
  </section>
- <button class="fullToggle" onclick="toggleFull()">${showFull?"收起完整內容":"📚 展開精熟練習｜Boss 挑戰＋錯題修復"}</button>
+ <button class="fullToggle adventureToggle" onclick="toggleFull()">${showFull?"收起加碼冒險":"🎮 我還想玩｜開啟 5 題挑戰"}</button>
  <section class="achievementPanel"><h3>冒險徽章櫃</h3><div class="badgeGrid">${badgeStates().map(b=>`<div class="achievement ${b.ok?"on":""}"><span>${b.emoji}</span><b>${b.name}</b><small>${b.ok?"已解鎖":b.tip}</small></div>`).join("")}</div></section>`;
- G5Voice?.enhance?.();renderRewards()
+ G5Voice?.enhance?.();renderRewards();if(examSession&&!examSession.finished)setTimeout(startExamClock,20)
 }
-
 function syncRoute(){
  try{
   const q=new URLSearchParams();q.set("unit",current);q.set("mode",viewMode);if(viewMode==="today")q.set("lesson",lessonIndex);
@@ -164,18 +159,18 @@ function todayLessonsFor(u){
 function renderToday(u){
  const ls=todayLessonsFor(u);
  lessonIndex=Math.min(Math.max(0,lessonIndex),ls.length-1);const L=ls[lessonIndex],key=`${u.id}_${lessonIndex}`,done=!!progress.todayLessons?.[key];
- $("unitTitle").textContent=`🎯 今日任務｜${u.title}`;$("unitSub").textContent=`今天只學 1 個核心觀念・第 ${lessonIndex+1}/${ls.length} 張`;
+ $("unitTitle").textContent=`🎯 今日任務｜${u.title}`;$("unitSub").textContent=`今天只過 1 個挑戰關卡・第 ${lessonIndex+1}/${ls.length} 關`;
  $("main").innerHTML=`
- <section class="todayModeBar"><div><b>今天不塞整章</b><span>一次只弄懂一個最重要觀念，完成再往下一張。</span></div><button onclick="openChapter()">📚 查看完整章節</button></section>
+ <section class="todayModeBar"><div><b>今天只玩一小關</b><span>一次只完成一個挑戰，過關再決定要不要繼續。</span></div><button onclick="openChapter()">🎮 進入冒險章節</button></section>
  <section class="todayPager">${ls.map((x,i)=>`<button class="${i===lessonIndex?'on':''} ${progress.todayLessons?.[`${u.id}_${i}`]?'done':''}" onclick="setTodayLesson(${i})"><span>${i+1}</span>${x.title}</button>`).join('')}</section>
- <section class="questCard todayConceptCard">
-  <div class="eyebrow">TODAY CARD ${lessonIndex+1}/${ls.length}</div><h2>${L.title}</h2>
-  <div class="definitionBox"><b>一句定義</b><p>${L.definition}</p></div>
-  <div class="focusSentence"><b>今天最重要：</b>${L.focus}</div>
+ <section class="questCard todayConceptCard" data-voice>
+  <div class="eyebrow">TODAY LEVEL ${lessonIndex+1}/${ls.length}</div><h2>${L.title}</h2>
+  <div class="definitionBox"><b>🔑 這關的祕密</b><p>${L.definition}</p></div>
+  <div class="focusSentence"><b>過關提示：</b>${L.focus}</div>
   <div class="labWrap deepVisual">${L.visual==="_main"?mainLab(u.lab):deepVisual(L.visual)}</div>
  </section>
- <section class="questCard todayCheckCard">
-  <div class="cardHead"><div><span class="step">✓</span><h3>30 秒檢查：真的懂了嗎？</h3></div><small>${done?'已完成':'答對 +6 XP'}</small></div>
+ <section class="questCard todayCheckCard" data-voice>
+  <div class="cardHead"><div><span class="step">✓</span><h3>30 秒小挑戰：試試就好</h3></div><small>${done?'已完成':'答對 +6 XP'}</small></div>
   <div class="taskQ"><b>${L.q}</b></div><div class="choices todayChoices">${L.options.map((o,i)=>`<button ${done?'disabled':''} onclick="checkTodayLesson(${i})">${String.fromCharCode(65+i)}. ${o}</button>`).join('')}</div><div id="todayFb" class="feedback ${done?'good':''}">${done?`✅ ${L.explain}`:''}</div>
  </section>
  <div class="todayNav"><button onclick="nextToday(-1)" ${lessonIndex===0?'disabled':''}>← 上一張</button><b>第 ${lessonIndex+1} 張／共 ${ls.length} 張</b><button class="primary" onclick="nextToday(1)">${lessonIndex===ls.length-1?'進完整章節 →':'下一張 →'}</button></div>`;
@@ -186,21 +181,80 @@ function nextToday(d){const u=UNITS.find(x=>x.id===current),n=todayLessonsFor(u)
 function openChapter(){viewMode="chapter";showFull=false;renderNav();renderUnit();syncRoute();window.scrollTo?.({top:0,behavior:"smooth"})}
 function checkTodayLesson(i){
  const u=UNITS.find(x=>x.id===current),L=todayLessonsFor(u)[lessonIndex],fb=$("todayFb");if(!L)return;const key=`${u.id}_${lessonIndex}`,already=!!progress.todayLessons?.[key];
- if(i===L.answer){let bonus=0;if(!already){progress.todayLessons[key]=true;bonus=rewardCorrect(6);save()}fb.className="feedback good";fb.textContent=`✅ ${L.explain}${already?'':`　+${6+bonus} XP`}`;if(!already)showRewardToast(`🎯 今日觀念完成！+${6+bonus} XP`)}else{rewardWrong();save();fb.className="feedback bad";fb.textContent=`再看一次「今天最重要」和圖解。提示：${L.definition}`}
+ if(i===L.answer){let bonus=0;if(!already){progress.todayLessons[key]=true;bonus=rewardCorrect(6);save()}fb.className="feedback good";fb.textContent=`✅ ${L.explain}${already?'':`　+${6+bonus} XP`}`;if(!already)showRewardToast(`🎯 今日觀念完成！+${6+bonus} XP`)}else{rewardWrong();save();fb.className="feedback bad";fb.textContent=`沒關係，先看一次圖和『過關提示』。提示：${L.definition}`}
 }
 function deepChapterHtml(u){
  const ls=u.today_lessons||[];if(!ls.length)return '';
- const cards=ls.map((L,i)=>`<section class="questCard conceptLesson" id="concept_${u.id}_${i}"><div class="conceptNo">核心觀念 ${i+1}</div><h3>${L.title}</h3><div class="definitionBox"><b>名詞／定義</b><p>${L.definition}</p></div><p class="focusSentence"><b>一定要會：</b>${L.focus}</p><div class="labWrap deepVisual">${deepVisual(L.visual)}</div></section>`).join('');
- const index=`<section class="questCard conceptIndex"><div class="cardHead"><div><span class="step">🗺️</span><h3>本章核心觀念地圖</h3></div><small>${ls.length} 張觀念卡</small></div><p>每一張只處理一個最重要觀念。看不懂時直接跳回那張，不必重讀整章。</p><div class="conceptJump">${ls.map((L,i)=>`<button onclick="document.getElementById('concept_${u.id}_${i}')?.scrollIntoView({behavior:'smooth',block:'start'})"><span>${i+1}</span>${L.title}</button>`).join('')}</div></section>`;
- return index+cards+(u.id==='u05'?angleGalleryHtml():'')
+ return ls.map((L,i)=>`<section class="questCard conceptLesson challengeStage stage${(i%4)+1}" data-voice id="concept_${u.id}_${i}"><div class="conceptNo">挑戰關卡 ${i+5}</div><h3>${L.title}</h3><div class="definitionBox"><b>🎯 這關的祕密</b><p>${L.definition}</p></div><p class="focusSentence"><b>過關提示：</b>${L.focus}</p><div class="labWrap deepVisual">${deepVisual(L.visual)}</div></section>`).join('')+(u.id==='u05'?angleGalleryHtml():'')
 }
+
+function storySceneHtml(u){
+ const scenes={
+  u01:["校園市集開張了！你被老師派到收銀台旁邊，桌上同時出現價格、重量和長長的小數。","學長把 28.6 元寫成 28.60 元，旁邊同學卻說『多一個 0 應該比較大吧？』大家都看向你。","你要先看懂每個數字站在哪一個位值，再幫大家把帳算對。今天不是背規則，是替市集救火。"],
+  u02:["班上準備把貼紙和小卡裝成一模一樣的禮物包。桌上有好幾疊材料，誰都不想剩下一張。","有人提議『每包放 5 張就好』，可是分到最後真的會剛好嗎？","你要用以前學過的乘法和除法，找出哪些分法可以整整齊齊分完。這些能剛好分完的數，就是今天的線索。"],
+  u03:["操場上有兩位跑者同時從起點出發，一位每 4 分鐘回來，一位每 6 分鐘回來。","大家開始打賭：他們下一次一起踩到起點會是幾分鐘後？有人一直盯著秒錶，有人直接開始數圈。","你要找出兩種規律再次重疊的時刻。這就是倍數與公倍數最像生活的地方。"],
+  u04:["料理教室今天要做水果鬆餅。食譜寫 3/4 杯牛奶，但桌上的量杯偏偏被切成 8 格、12 格。","同一杯牛奶，為什麼可以寫成 3/4、6/8、9/12？","你會發現：擴分、約分、通分其實都在幫同一個分數『換衣服』，大小沒有偷偷改變。"],
+  u05:["遊樂園要換新招牌：入口要做多邊形路標，旋轉設施要畫扇形，支架還要靠三角形撐住。","設計圖上有些角度被遮住，有些線交疊得像星星和飛鏢。工程師說：『只要找到圖形的規律，就能把缺的角補回來。』","你今天是圖形偵探。先認邊和角，再把複雜圖拆成你已經會的小圖形。"],
+  u06:["登山隊走到半山腰，隊長拿出紀錄板：上午走了 3/8，下午又走了 1/4。","有人立刻把 3+1、8+4 寫在一起，隊長卻笑著說：『這兩種小塊根本不一樣大呀！』","你要先把分數換成相同大小的小塊，再決定今天到底走了多少。"],
+  u07:["校慶徽章只畫好左半邊，設計師把一面小鏡子立在正中央。鏡子裡立刻出現另一半。","可是正式印刷不能真的放鏡子，右邊每一點到底要畫在哪裡？","你要靠『同樣遠、正對面』把鏡中的位置搬到紙上，讓兩邊真的可以對摺重合。"],
+  u08:["家庭採買日，你拿著 1000 元和一張長長的購物清單走進文具店。","盒彩筆、筆記本、折價券全部混在同一題裡。若一看到數字就從左算到右，很可能還沒結帳就把預算弄亂。","你要像店長一樣先看事情的順序：哪些要先算、哪些要一起算，再按步驟完成。"],
+  u09:["學校要重新整理花圃，但地面不是整齊的長方形：有斜斜的平行四邊形、三角旗，還有梯形草地。","工友叔叔問：『斜邊這麼長，是不是就拿斜邊當高？』","你要拿出直角尺找真正的垂直距離。只要找到底和高，歪歪的圖形也能變成會算的樣子。"],
+  u10:["包裝工作室收到三件奇怪任務：幫罐頭做盒子、幫生日帽做保護套、還要幫足球找合適的外箱。","只看正面都像圓形，但拿起來一轉，立體的底面、側面、頂點完全不同。","你要像包裝工程師一樣把物體轉一轉、看底面、摸邊和頂點，找出它真正屬於哪一族。"]
+ };
+ const a=scenes[u.id]||[u.story,u.mission?.scene||'',u.draw_first||''];
+ return `<section class="questCard storyScene" data-voice><div class="storySky"><span class="sceneEmoji">${u.emoji}</span><div><small>冒險故事・第 1 幕</small><h3>先進入場景，不急著學公式</h3></div></div><div class="storyFrames"><p>${a[0]}</p><p>${a[1]}</p><p class="storyCliff">${a[2]}</p></div><div class="storyCue">🎬 準備好了就往下走。每一關只做一件事。</div></section>`
+}
+
+function aiRestHtml(u){return `<section class="questCard aiRestCard" data-voice><div class="cardHead"><div><span class="step">🤖</span><h3>AI 休息站｜這關先不用動腦</h3></div><small>喝口水，讓 AI 幫你抓陷阱</small></div><div class="aiRestBody"><div class="aiBot">🤖</div><div><p>你已經走很遠了。這裡不用作答，我先幫你看看最常出現的錯法。</p><button onclick="showAiRest()">✨ AI 幫我診療</button><div id="aiRestResult" class="aiRestResult"><span>先休息一下，按按鈕再看。</span></div></div></div></section>`}
+function showAiRest(){const u=UNITS.find(x=>x.id===current),el=$("aiRestResult");if(!u||!el)return;el.innerHTML=`<b>AI 發現常見陷阱：</b><p>${u.error_clinic.rule}</p><small>例如：${u.error_clinic.q}</small><p class="aiEncourage">不需要現在背起來。下次看到類似題目，停一下想這句就夠了。</p>`;G5Voice?.enhance?.()}
+
+function orderedQuestions(uid){const rank={"基礎":0,"應用":1,"進階":2,"挑戰":3};return [...(BANK[uid]||[])].sort((a,b)=>(rank[a.difficulty]??1)-(rank[b.difficulty]??1))}
+function levelQuestions(uid){const q=orderedQuestions(uid),A=q.slice(0,5),D=q.slice(-5),used=new Set([...A,...D].map(x=>x.id)),mid=q.filter(x=>!used.has(x.id));return {A,B:mid.slice(0,5),C:mid.slice(5,10),D}}
+function levelStats(uid,l){const qs=levelQuestions(uid)[l]||[],correct=qs.filter(q=>progress.correct[q.id]).length,attempted=qs.filter(q=>progress.correct[q.id]||(progress.mistakes[q.id]||0)>0).length;return {correct,attempted,pass:correct>=3}}
+function levelUnlocked(uid,l){const i=MASTERY_LEVELS.indexOf(l);if(i<=0)return true;const prev=levelStats(uid,MASTERY_LEVELS[i-1]);return prev.pass||prev.attempted>=3}
+function masteryLevelTabs(uid){return `<div class="levelTabs">${MASTERY_LEVELS.map((l,i)=>{const st=levelStats(uid,l),open=levelUnlocked(uid,l);return `<button class="levelTab ${masteryLevel===l?'on':''} ${open?'':'locked'}" ${open?`onclick="setMasteryLevel('${l}')"`:'disabled'}><span>${l}</span><b>${l}卷・${['新手村','探險隊','高手坡','勇者塔'][i]}</b><small>${st.pass?'✅ 已過關':open?`${st.correct}/5 答對`:'🔒 先玩上一級'}</small></button>`}).join('')}</div>`}
+function setMasteryLevel(l){if(!levelUnlocked(current,l))return;masteryLevel=l;renderUnit();setTimeout(()=>document.querySelector('.levelPaper')?.scrollIntoView({behavior:'smooth',block:'start'}),20)}
+function masteryLevelHtml(u){const qs=levelQuestions(u.id)[masteryLevel]||[],st=levelStats(u.id,masteryLevel),i=MASTERY_LEVELS.indexOf(masteryLevel),titles=['先試試看','多想一步','開始活用','勇者挑戰'],words=['不會也完全沒關係，先看圖玩 5 題。','有幾題會轉個彎，慢慢來就好。','把數學放進生活情境，你已經走很遠了。','這是加碼勇者關，不一定要全會。'];return `<div class="levelPaper level${masteryLevel}"><div class="levelPaperHead"><div><small>${masteryLevel}卷・LEVEL ${masteryLevel}</small><h3>${titles[i]}｜只有 5 題</h3><p>${words[i]}</p></div><div class="levelScore"><b>${st.correct}/5</b><span>${st.pass?'🎉 過關！':'答對 3 題就過關'}</span></div></div><div class="phoneReward ${st.pass?'earned':''}"><span>📱</span><div><b>${st.pass?'手機時間券已點亮！':'這級的神祕獎勵'}</b><small>${st.pass?'可以和家長約定兌換 5 分鐘手機時間。':'答對 3 題就會點亮；是否兌換由家長決定。'}</small></div></div><div class="levelQuestionList">${qs.map((q,j)=>levelPracticeHtml(q,j)).join('')}</div><div class="levelEndCheer">${st.pass?'🌟 你不需要 5 題全對也能前進。做得到 3 題，就代表這一級已經有抓到重點！':'🍀 卡住就按提示。今天先做到 1 題，也算向前一步。'}</div></div>`}
+function levelPracticeHtml(q,i){const answered=!!progress.correct[q.id],wrong=progress.mistakes[q.id]||0;return `<article data-voice class="practiceQ pictureQuestion ${q.type==='life'?'lifeQ':'conceptQ'} ${wrong&&!answered?'needsFix':''}"><div class="qPicture">${questionVisual(current,q,i)}</div><div class="qMeta"><span>${q.type==='life'?'🏙️ 生活題':'🎯 闖關題'}</span><span class="difficulty">${masteryLevel}級</span><small>${answered?'✓ 已答對':wrong?'再試一次':'答對 +8 XP'}</small></div><b>${i+1}. ${q.text}</b><div class="qChoices">${q.options.map((o,j)=>`<button ${answered?'disabled':''} onclick="checkPractice('${q.id}',${j},this)">${String.fromCharCode(65+j)}. ${o}</button>`).join('')}</div><div class="hintLine"><button ${answered?'disabled':''} onclick="showHint('${q.id}')">💡 我想看提示</button><span id="hint_${q.id}"></span></div><p id="fb_${q.id}" class="${answered?'goodText':''}">${answered?`✓ ${q.explain}${wrong?'　🩹 修復成功！':''}`:''}</p></article>`}
+function questionVisual(uid,q,i){
+ const n=i+1;
+ if(uid==='u01')return `<svg viewBox="0 0 420 125"><rect x="20" y="25" width="380" height="70" rx="14" fill="#eef5ff"/><text x="45" y="55" font-size="13" fill="#60708a">十萬｜萬｜千｜百｜十｜個｜十分｜百分｜千分</text><line x1="210" y1="32" x2="210" y2="88" stroke="#f1a83c" stroke-width="3"/><text x="55" y="82" font-size="22" font-weight="900">🔢 位值排整齊，再比較或計算</text></svg>`;
+ if(uid==='u02')return `<svg viewBox="0 0 420 125"><g fill="#6f8de8">${Array.from({length:12},(_,k)=>`<rect x="${35+(k%6)*38}" y="${25+Math.floor(k/6)*38}" width="28" height="28" rx="6"/>`).join('')}</g><text x="285" y="52" font-size="15" font-weight="900">🧩 剛好分完？</text><text x="285" y="80" font-size="13">分法就是線索</text></svg>`;
+ if(uid==='u03')return `<svg viewBox="0 0 420 125"><line x1="30" y1="72" x2="390" y2="72" stroke="#53657d" stroke-width="3"/>${[0,1,2,3,4,5,6].map(k=>`<circle cx="${40+k*55}" cy="72" r="${k%2?7:5}" fill="${k%2?'#f0ad36':'#5c7ee2'}"/><text x="${34+k*55}" y="102" font-size="11">${k*4}</text>`).join('')}<text x="40" y="28" font-size="15" font-weight="900">🏃 固定節奏一直往前跳</text></svg>`;
+ if(uid==='u04'||uid==='u06')return `<div class="miniFractionPic"><span style="background:conic-gradient(#6f8de8 0 50%,#edf1f7 50%)"></span><b>${uid==='u04'?'切法不同，大小可相同':'先換成同樣大小的小塊'}</b><span style="background:conic-gradient(#f0ad36 0 66.66%,#edf1f7 66.66%)"></span></div>`;
+ if(uid==='u05')return `<svg viewBox="0 0 420 130"><polygon points="70,105 120,25 175,105" fill="#e5edff" stroke="#5878d7" stroke-width="4"/><polygon points="225,30 330,30 370,100 190,100" fill="#fff1d4" stroke="#e3a436" stroke-width="4"/><text x="35" y="124" font-size="12">三角形</text><text x="230" y="124" font-size="12">多邊形／角度</text></svg>`;
+ if(uid==='u07')return `<svg viewBox="0 0 420 130"><line x1="210" y1="15" x2="210" y2="115" stroke="#f0ad36" stroke-width="5" stroke-dasharray="7 6"/><circle cx="125" cy="65" r="12" fill="#5878d7"/><circle cx="295" cy="65" r="12" fill="#8d6ddd"/><line x1="125" y1="65" x2="295" y2="65" stroke="#92a1b7" stroke-dasharray="5 4"/><text x="110" y="35" font-size="14">A</text><text x="290" y="35" font-size="14">A′</text><text x="174" y="126" font-size="12">鏡面等距</text></svg>`;
+ if(uid==='u08')return `<svg viewBox="0 0 420 125"><rect x="35" y="30" width="100" height="55" rx="12" fill="#e8efff"/><rect x="160" y="30" width="100" height="55" rx="12" fill="#fff0cc"/><rect x="285" y="30" width="100" height="55" rx="12" fill="#e9f8ef"/><text x="68" y="64" font-size="19">① 括號</text><text x="190" y="64" font-size="19">② × ÷</text><text x="317" y="64" font-size="19">③ + −</text></svg>`;
+ if(uid==='u09')return `<svg viewBox="0 0 420 130"><polygon points="55,105 155,105 120,35" fill="#e9f1ff" stroke="#5577d8" stroke-width="4"/><line x1="120" y1="35" x2="120" y2="105" stroke="#efaa39" stroke-width="4" stroke-dasharray="6 4"/><path d="M120 105 h16 v-16" fill="none" stroke="#efaa39" stroke-width="3"/><text x="170" y="68" font-size="16" font-weight="900">高 ⟂ 底</text><text x="170" y="95" font-size="13">找垂直距離，不找斜邊</text></svg>`;
+ return `<svg viewBox="0 0 420 130"><ellipse cx="90" cy="95" rx="55" ry="18" fill="#dfe8ff" stroke="#5b78d8" stroke-width="3"/><rect x="35" y="35" width="110" height="60" fill="#edf3ff" stroke="#5b78d8" stroke-width="3"/><ellipse cx="90" cy="35" rx="55" ry="18" fill="#f7f9ff" stroke="#5b78d8" stroke-width="3"/><path d="M220 100 L275 28 L330 100 Z" fill="#fff0cf" stroke="#e1a239" stroke-width="3"/><circle cx="375" cy="66" r="36" fill="#e7f6ee" stroke="#46a172" stroke-width="3"/><text x="35" y="125" font-size="12">柱體</text><text x="242" y="125" font-size="12">錐體</text><text x="360" y="120" font-size="12">球</text></svg>`
+}
+function chapterFinaleHtml(u){const ls=u.today_lessons||[],names=ls.map(x=>x.title).slice(0,6);return `<section class="chapterFinale" data-voice><div class="finaleScene"><span>${u.badge.emoji}</span><div><small>故事完結篇</small><h3>你把這一章的線索收進背包了</h3></div></div><p>主角把任務完成後，回頭一看，才發現一路上其實已經撿到這些道具：</p><div class="souvenirRow">${names.map((x,i)=>`<span>${['🧭','🔑','🪄','🧩','🎒','🏅'][i]||'⭐'} ${x}</span>`).join('')}</div><p class="finaleWords">不用一次記住全部。下次遇到題目，只要想起故事裡的一個畫面，就能把方法慢慢找回來。</p></section>`}
+
+function examRange(){const idx=UNITS.findIndex(x=>x.id===current),start=idx<5?0:5;return {start,label:start===0?'第一次模擬月考｜第 1～5 章':'第二次模擬月考｜第 6～10 章'}}
+function examQuestions(paper){const {start}=examRange(),out=[];for(let i=start;i<start+5;i++){const uid=UNITS[i].id,q=orderedQuestions(uid),pick=paper==='A'?[1,Math.min(12,q.length-1)]:[4,Math.min(17,q.length-1)];for(const n of pick){const x=q[n];out.push({...x,examUid:uid,examUnit:UNITS[i].title})}}return out}
+function examArenaHtml(){const r=examRange();if(!examSession)return `<section class="examLobby"><div class="examSign">🔔</div><div><small>加碼模式・不是每天都要考</small><h3>${r.label}</h3><p>想體驗真的月考再進來。每卷 10 題、20 分鐘，有倒數計時和考場鈴聲。平常闖關不用打開這裡。</p></div><div class="examPaperBtns"><button onclick="startExam('A')"><span>A</span><b>月考 A 卷</b><small>10 題・20 分鐘</small></button><button onclick="startExam('B')"><span>B</span><b>月考 B 卷</b><small>不同題型・同範圍</small></button></div></section>`;
+ const qs=examQuestions(examSession.paper);if(examSession.finished){return `<section class="examResult"><div class="examScoreCircle">${examSession.score}</div><h3>${r.label}・${examSession.paper}卷完成</h3><p>${examSession.score>=80?'🎉 很棒！你已經有正式上場的感覺了。':examSession.score>=60?'🌱 已經有不少題會了，回去玩幾關再來會更穩。':'🍀 這只是模擬，不代表你不會。先回冒險關卡把圖看懂，再來一次。'}</p><button onclick="closeExam()">回到冒險區</button></section>`}
+ return `<section class="examPaper"><div class="examTop"><div><small>${r.label}</small><h3>${examSession.paper} 卷</h3></div><div class="examTimer"><span>⏱️</span><b id="examClock">20:00</b><button onclick="ringBell()">🔔 試聽</button></div></div><div class="examIdentity"><span>班級：________</span><span>姓名：________</span><span>座號：____</span><span>得分：____</span></div><div class="examRule">📣 10 題，每題 10 分。可以先跳過不會的題目；剩 5 分鐘、1 分鐘和時間到會響鈴。</div><div class="examQuestions">${qs.map((q,i)=>examQuestionHtml(q,i)).join('')}</div><div class="examActions"><button onclick="finishExam(false)">交卷</button><small>已作答 ${Object.keys(examSession.answers||{}).length}/10 題</small></div></section>`}
+function examQuestionHtml(q,i){const chosen=examSession.answers?.[q.id];return `<article class="examQ" data-voice><div class="qPicture">${questionVisual(q.examUid,q,i%5)}</div><small>第 ${i+1} 題｜${q.examUnit}</small><b>${q.text}</b><div class="examChoices">${q.options.map((o,j)=>`<button class="${chosen===j?'selected':''}" onclick="answerExam('${q.id}',${j},this)">${String.fromCharCode(65+j)}. ${o}</button>`).join('')}</div></article>`}
+function startExam(paper){stopExamClock();examSession={paper,answers:{},endsAt:Date.now()+20*60*1000,finished:false,warn5:false,warn1:false};ringBell();renderUnit();setTimeout(()=>document.querySelector('.examPaper')?.scrollIntoView({behavior:'smooth',block:'start'}),30)}
+function answerExam(id,ans,btn){if(!examSession||examSession.finished)return;examSession.answers[id]=ans;btn?.parentElement?.querySelectorAll('button')?.forEach(b=>b.classList.remove('selected'));btn?.classList.add('selected');const el=document.querySelector('.examActions small');if(el)el.textContent=`已作答 ${Object.keys(examSession.answers).length}/10 題`}
+function startExamClock(){if(!examSession||examSession.finished)return;stopExamClock();const tick=()=>{if(!examSession||examSession.finished)return;let sec=Math.max(0,Math.ceil((examSession.endsAt-Date.now())/1000)),m=Math.floor(sec/60),s=sec%60,el=$("examClock");if(el)el.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;if(sec<=300&&!examSession.warn5){examSession.warn5=true;ringBell();showRewardToast('🔔 剩 5 分鐘，先完成會的題目')};if(sec<=60&&!examSession.warn1){examSession.warn1=true;ringBell();showRewardToast('🔔 剩 1 分鐘，準備檢查')};if(sec<=0)finishExam(true)};tick();examTicker=setInterval(tick,1000)}
+function stopExamClock(){if(examTicker){clearInterval(examTicker);examTicker=null}}
+function ringBell(){try{const C=window.AudioContext||window.webkitAudioContext;if(C){const c=new C(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.setValueAtTime(880,c.currentTime);o.frequency.exponentialRampToValueAtTime(660,c.currentTime+.18);g.gain.setValueAtTime(.12,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.45);o.start();o.stop(c.currentTime+.45);return}}catch(e){};try{speechSynthesis?.speak?.(new SpeechSynthesisUtterance('叮咚'))}catch(e){}}
+function finishExam(auto=false){if(!examSession||examSession.finished)return;const qs=examQuestions(examSession.paper),n=qs.filter(q=>examSession.answers[q.id]===q.answer).length;examSession.score=n*10;examSession.finished=true;stopExamClock();ringBell();const key=`${examRange().start}_${examSession.paper}`;if(examSession.score>=80&&!progress.examAwards[key]){progress.examAwards[key]=true;progress.xp+=30;save();showRewardToast('🏆 月考達標！+30 XP')};renderUnit();setTimeout(()=>document.querySelector('.examResult')?.scrollIntoView({behavior:'smooth',block:'center'}),30)}
+function closeExam(){stopExamClock();examSession=null;renderUnit();setTimeout(()=>document.querySelector('.examLobby')?.scrollIntoView({behavior:'smooth',block:'start'}),20)}
 function deepVisual(type){
  const m={
   place_value:placeValueDeepLab,decimal_compare_deep:decimalCompareDeep,decimal_align:decimalAlignDeep,rounding_line:roundingDeep,decimal_life:decimalLifeDeep,
   factor_inverse:factorInverseDeep,divisibility:divisibilityDeep,factor_pairs:factorPairsDeepUnique,gcf_deep:gcfDeepUnique,gcf_life:gcfLifeDeep,
   multiple_inverse:multipleInverseDeep,infinite_multiples:infiniteMultiplesDeep,multiple_line:multipleLineDeepUnique,lcm_deep:lcmTimeDeepUnique,track_lcm:trackLcmDeepUnique,
   fraction_words:fractionWordsDeep,fraction_pie:fractionPieDeep,expand_fraction:expandFractionDeep,reduce_fraction:reduceFractionDeep,common_den_deep:commonDenLab,fraction_compare_rules:fractionCompareDeep,
-  ngon:ngonDeep,regular_ngon:regularNgonDeep,triangle_inequality:triangleInequalityDeep,interior_sum:interiorSumDeep,special_triangles:specialTrianglesDeep,parallelogram_angles:parallelogramDeep,trapezoid_angles:trapezoidDeep,sector_deep:sectorDeepUnique,angle_mixed:angleMixedDeep
+  ngon:ngonDeep,regular_ngon:regularNgonDeep,triangle_inequality:triangleInequalityDeep,interior_sum:interiorSumDeep,special_triangles:specialTrianglesDeep,parallelogram_angles:parallelogramDeep,trapezoid_angles:trapezoidDeep,sector_deep:sectorDeepUnique,angle_mixed:angleMixedDeep,
+  frac_unit_size:fracUnitDeep,frac_common_unit:fracCommonDeep,frac_add_steps:fracAddStepsDeep,frac_sub_steps:fracSubStepsDeep,frac_simplify:fracSimplifyDeep,frac_life:fracLifeDeep,
+  sym_mirror:symMirrorDeep,sym_distance:symDistanceDeep,sym_axis:symAxisDeep,sym_draw:symDrawDeep,sym_axes:symAxesDeep,sym_life:symLifeDeep,
+  op_structure:opStructureDeep,op_order:opOrderDeep,op_parentheses:opParenthesesDeep,op_left_right:opLeftRightDeep,op_distributive:opDistributiveDeep,op_life:opLifeDeep,
+  area_square:areaSquareDeep,area_height:areaHeightDeep,area_para:areaParaDeep,area_triangle_deep:areaTriangleDeep,area_extension:areaExtensionDeep,area_trapezoid:areaTrapezoidDeep,area_life:areaLifeDeep,
+  solid_vocab:solidVocabDeep,solid_prism:solidPrismDeep,solid_pyramid:solidPyramidDeep,solid_round:solidRoundDeep,solid_sphere:solidSphereDeep,solid_life:solidLifeDeep
  };
  return m[type]?m[type]():`<div class="labError">圖解準備中：${type}</div>`
 }
@@ -208,7 +262,7 @@ function toggleFull(){showFull=!showFull;renderUnit();if(showFull)setTimeout(()=
 function setPracticeFilter(f){practiceFilter=f;renderUnit();setTimeout(()=>document.querySelector(".practiceHead")?.scrollIntoView({behavior:"smooth",block:"start"}),30)}
 function checkWarmup(i){const u=UNITS.find(x=>x.id===current),fb=$("warmupFb"),ok=i===u.warmup.answer;fb.className=`feedback ${ok?"good":"bad"}`;fb.textContent=`${ok?"✅":"💡"} ${u.warmup.explain}`}
 function checkClinic(i){const u=UNITS.find(x=>x.id===current),fb=$("clinicFb"),ok=i===u.error_clinic.answer;fb.className=`feedback ${ok?"good":"bad"}`;fb.textContent=ok?`✅ 找到錯因！${u.error_clinic.explain}`:`再找「錯在哪個觀念」，不是只看答案大小。${u.error_clinic.rule}`}
-function challengeHtml(u){const done=challengeDone(u.id);return `<div class="bossCard ${done?"done":""}"><div class="bossTitle"><span>👑 BOSS 題</span><small>${done?"✓ 已攻克":"首次答對 +12 XP"}</small></div><b>${u.challenge.q}</b><div class="choices compact">${u.challenge.options.map((o,i)=>`<button ${done?"disabled":""} onclick="checkChallenge(${i})">${String.fromCharCode(65+i)}. ${o}</button>`).join("")}</div><div class="hintLine"><button onclick="showChallengeHint()">💡 給我一點提示</button><span id="challengeHint"></span></div><div id="challengeFb" class="feedback">${done?`✓ ${u.challenge.explain}`:""}</div></div>`}
+function challengeHtml(u){const done=challengeDone(u.id);return `<div class="bossCard ${done?"done":""}" data-voice><div class="bossTitle"><span>👑 BOSS 題</span><small>${done?"✓ 已攻克":"首次答對 +12 XP"}</small></div><b>${u.challenge.q}</b><div class="choices compact">${u.challenge.options.map((o,i)=>`<button ${done?"disabled":""} onclick="checkChallenge(${i})">${String.fromCharCode(65+i)}. ${o}</button>`).join("")}</div><div class="hintLine"><button onclick="showChallengeHint()">💡 給我一點提示</button><span id="challengeHint"></span></div><div id="challengeFb" class="feedback">${done?`✓ ${u.challenge.explain}`:""}</div></div>`}
 function showChallengeHint(){const u=UNITS.find(x=>x.id===current);if($("challengeHint"))$("challengeHint").textContent=u.challenge.hint}
 function checkChallenge(i){const u=UNITS.find(x=>x.id===current),fb=$("challengeFb");if(challengeDone(current))return;if(i===u.challenge.answer){progress.challenge[current]=true;const bonus=rewardCorrect(12,{life:true});fb.className="feedback good";fb.textContent=`👑 攻克 Boss！${u.challenge.explain} +12 XP${bonus?`＋連勝 ${bonus} XP`:""}`;showRewardToast(`👑 Boss 完成！+${12+bonus} XP`)}else{rewardWrong();fb.className="feedback bad";fb.textContent=`還差一步。提示：${u.challenge.hint}`}save();renderNav()}
 function taskHtml(u){return `<div data-voice class="taskQ"><b>${u.task.q}</b></div><div class="choices">${u.task.options.map((o,i)=>`<button onclick="checkTask(${i})">${String.fromCharCode(65+i)}. ${o}</button>`).join("")}</div><div id="taskFb" class="feedback">${progress.completed[u.id]?`已完成這關。再答一次可以複習，但 XP 不會重複計算。`:""}</div>`}
@@ -219,24 +273,27 @@ function rewardCorrect(base,{life=false,unit=false}={}){
 }
 function rewardWrong(){progress.combo=0}
 function showRewardToast(text){let t=document.querySelector('.rewardToast');if(t)t.remove();t=document.createElement('div');t.className='rewardToast';t.textContent=text;document.body.appendChild(t);setTimeout(()=>t.classList.add('show'),20);setTimeout(()=>t.remove(),1900)}
+function showStarCelebration(n){let x=document.querySelector('.starCelebration');if(x)x.remove();x=document.createElement('div');x.className='starCelebration';x.innerHTML=`<div><span>${'⭐'.repeat(n)}</span><b>升到 ${n} 星！</b><small>${n===3?'三星達成，這章超強！':'再完成一些練習，下一顆星就在前面。'}</small></div>`;document.body.appendChild(x);setTimeout(()=>x.classList.add('show'),20);setTimeout(()=>x.remove(),2400)}
 function checkTask(i){
  const u=UNITS.find(x=>x.id===current),fb=$("taskFb"),ok=i===u.task.answer;progress.attempts[current]=(progress.attempts[current]||0)+1;
- if(ok){let bonus=0,isNew=!progress.completed[current];if(isNew){progress.completed[current]=true;bonus=rewardCorrect(25,{life:true,unit:true})}
-  fb.className="feedback good";fb.innerHTML=`✅ 任務完成！ ${u.task.explain}<br><b>${encourage()}</b>${isNew?`<br>+25 XP${bonus?` ＋連勝獎勵 ${bonus} XP`:""}・解鎖 ${u.badge.emoji}${u.badge.name}`:""}`;if(isNew)showRewardToast(`🎉 過關！+${25+bonus} XP・${u.badge.name}`)
+ if(ok){let bonus=0,isNew=!progress.completed[current],beforeStars=unitStars(current);if(isNew){progress.completed[current]=true;bonus=rewardCorrect(25,{life:true,unit:true})}
+  fb.className="feedback good";fb.innerHTML=`✅ 任務完成！ ${u.task.explain}<br><b>${encourage()}</b>${isNew?`<br>+25 XP${bonus?` ＋連勝獎勵 ${bonus} XP`:""}・解鎖 ${u.badge.emoji}${u.badge.name}`:""}`;if(isNew){showRewardToast(`🎉 過關！+${25+bonus} XP・${u.badge.name}`);const afterStars=unitStars(current);if(afterStars>beforeStars)setTimeout(()=>showStarCelebration(afterStars),420)}
  }else{rewardWrong();fb.className="feedback bad";fb.textContent=`先別急著算。回到情境想「要找什麼」：${u.task.explain}`}
  save();renderNav()
 }
 function encourage(){const done=doneCount();return done>=9?"差最後一章，準備全破！":done>=7?"已進入後段冒險，保持節奏。":done>=4?"開始把不同章節串起來了。":"先拿一個小成功，數學會越來越有手感。"}
 function practiceHtml(q,i){
  const key=q.id,answered=progress.correct[key],wrong=progress.mistakes[key]||0;
- return `<article class="practiceQ ${q.type==='life'?"lifeQ":"conceptQ"} ${wrong&&!answered?"needsFix":""}"><div class="qMeta"><span>${q.type==='life'?"🏙️ 生活活用":"🧠 觀念檢查"}</span><span class="difficulty">${q.difficulty||"練習"}</span><small>${answered?"✓ 已答對":wrong?`🩹 待修・錯 ${wrong} 次`:"答對 +8 XP"}</small></div><b>${i+1}. ${q.text}</b><div>${q.options.map((o,j)=>`<button ${answered?"disabled":""} onclick="checkPractice('${key}',${j},this)">${String.fromCharCode(65+j)}. ${o}</button>`).join("")}</div><div class="hintLine"><button ${answered?"disabled":""} onclick="showHint('${key}')">💡 提示</button><span id="hint_${key}"></span></div><p id="fb_${key}" class="${answered?"goodText":""}">${answered?`✓ ${q.explain}${wrong?"　🩹 這題已修復！":""}`:""}</p></article>`
+ return `<article data-voice class="practiceQ ${q.type==='life'?"lifeQ":"conceptQ"} ${wrong&&!answered?"needsFix":""}"><div class="qMeta"><span>${q.type==='life'?"🏙️ 生活活用":"🧠 觀念檢查"}</span><span class="difficulty">${q.difficulty||"練習"}</span><small>${answered?"✓ 已答對":wrong?`🩹 待修・錯 ${wrong} 次`:"答對 +8 XP"}</small></div><b>${i+1}. ${q.text}</b><div>${q.options.map((o,j)=>`<button ${answered?"disabled":""} onclick="checkPractice('${key}',${j},this)">${String.fromCharCode(65+j)}. ${o}</button>`).join("")}</div><div class="hintLine"><button ${answered?"disabled":""} onclick="showHint('${key}')">💡 提示</button><span id="hint_${key}"></span></div><p id="fb_${key}" class="${answered?"goodText":""}">${answered?`✓ ${q.explain}${wrong?"　🩹 這題已修復！":""}`:""}</p></article>`
 }
 function showHint(id){const q=(BANK[current]||[]).find(x=>x.id===id);if(!q)return;const el=$("hint_"+id);if(el&&!el.textContent){el.textContent=q.hint||"先圈出題目要找什麼。";progress.hintsUsed=(progress.hintsUsed||0)+1;save()}}
 function checkPractice(id,ans,btn){
  const q=(BANK[current]||[]).find(x=>x.id===id),fb=$("fb_"+id);if(!q||progress.correct[id])return;
- if(ans===q.answer){const hadWrong=(progress.mistakes[id]||0)>0;progress.correct[id]=true;if(hadWrong)progress.fixedMistakes=(progress.fixedMistakes||0)+1;const bonus=rewardCorrect(8,{life:q.type==='life'});fb.className="goodText";fb.textContent=`✓ ${q.explain} +8 XP${bonus?`＋連勝 ${bonus} XP`:""}${hadWrong?"　🩹 錯題修復成功！":""}`;btn.parentElement.querySelectorAll("button").forEach(b=>b.disabled=true);showRewardToast(hadWrong?`🩹 修復成功！+${8+bonus} XP`:`⭐ 答對！+${8+bonus} XP`)
+ const beforeLevel=showFull?levelStats(current,masteryLevel).pass:false;
+ if(ans===q.answer){const beforeStars=unitStars(current),hadWrong=(progress.mistakes[id]||0)>0;progress.correct[id]=true;if(hadWrong)progress.fixedMistakes=(progress.fixedMistakes||0)+1;const bonus=rewardCorrect(8,{life:q.type==='life'});fb.className="goodText";fb.textContent=`✓ ${q.explain} +8 XP${bonus?`＋連勝 ${bonus} XP`:""}${hadWrong?"　🩹 錯題修復成功！":""}`;btn.parentElement.querySelectorAll("button").forEach(b=>b.disabled=true);const afterStars=unitStars(current),afterLevel=showFull?levelStats(current,masteryLevel).pass:false;if(afterLevel&&!beforeLevel)showRewardToast(`📱 ${masteryLevel}級過關！手機時間券點亮`);else showRewardToast(hadWrong?`🩹 修復成功！+${8+bonus} XP`:`⭐ 答對！+${8+bonus} XP`);if(afterStars>beforeStars)setTimeout(()=>showStarCelebration(afterStars),420)
  }else{progress.mistakes[id]=(progress.mistakes[id]||0)+1;rewardWrong();fb.className="badText";fb.textContent=`先不要抄正解。${q.wrong_tip||"重新找出題目要你求什麼。"} 可以按「提示」再想一次。`}
- save();renderNav()
+ save();renderNav();
+ if(progress.correct[id]&&showFull){const y=window.scrollY||0;renderUnit();try{window.scrollTo({top:y,behavior:"auto"})}catch(e){window.scrollTo?.(0,y)}}
 }
 
 /* ---------- lab routers ---------- */
@@ -435,7 +492,7 @@ function trapezoidPanel(a,t){const d=180-a,b=t==='iso'?a:105,c=180-b;return `<sv
 window.setTrapType=t=>{window.trapType=t;$('tzGen')?.classList.toggle('on',t==='general');$('tzIso')?.classList.toggle('on',t==='iso');updateTrapezoid()};
 window.updateTrapezoid=()=>{const a=Number($('tzAR')?.value||72);$('tzA').textContent=a;$('tzBox').innerHTML=trapezoidPanel(a,window.trapType)};
 function angleMixedDeep(){return `<div class="deepExplain"><b>複合圖形的策略：不要找新公式</b><p>① 先標出對頂角／平角。② 再找每一個三角形的 180°。③ 若有平行線、等腰、平行四邊形或梯形，再套它們的性質。</p></div>${angleDiagram(4)}<div class="conceptCallout">下面完整章節還有 12 組不同的角度大雜燴圖。</div>`}
-function angleGalleryHtml(){const qs=(BANK.u05||[]).slice(16,28);return `<section class="questCard angleGallery"><div class="cardHead"><div><span class="step">★</span><h3>角度大雜燴圖庫｜12 組</h3></div><small>交疊・星型・飛鏢型・四邊形</small></div><p>先看圖、口頭說出「第一步用哪個性質」，再按顯示解答。這些不是 12 個新公式，而是把舊規則重新組合。</p><div class="angleGrid">${qs.map((q,i)=>`<article><div class="anglePic">${angleDiagram(i)}</div><b>${q.text.replace(/【[^】]+】/,'')}</b><div class="angleAnswer hidden" id="angAns${i}">${q.explain}　答案：${q.options[q.answer]}</div><button onclick="toggleAngleAnswer(${i})">顯示／隱藏解答</button></article>`).join('')}</div></section>`}
+function angleGalleryHtml(){const qs=(BANK.u05||[]).slice(16,28);return `<section class="questCard angleGallery"><div class="cardHead"><div><span class="step">★</span><h3>角度大雜燴圖庫｜12 組</h3></div><small>交疊・星型・飛鏢型・四邊形</small></div><p>先看圖、口頭說出「第一步用哪個性質」，再按顯示解答。這些不是 12 個新公式，而是把舊規則重新組合。</p><div class="angleGrid">${qs.map((q,i)=>`<article data-voice><div class="anglePic">${angleDiagram(i)}</div><b>${q.text.replace(/【[^】]+】/,'')}</b><div class="angleAnswer hidden" id="angAns${i}">${q.explain}　答案：${q.options[q.answer]}</div><button onclick="toggleAngleAnswer(${i})">顯示／隱藏解答</button></article>`).join('')}</div></section>`}
 window.toggleAngleAnswer=i=>$(`angAns${i}`)?.classList.toggle('hidden');
 function angleDiagram(i){
  const n=i%12;
@@ -464,3 +521,38 @@ function trackLcmDeepUnique(){return `<div class="deepExplain"><b>同時回起�
 window.updateTrackLcmDeep=()=>{const a=Number($('tldAR')?.value||2),b=Number($('tldBR')?.value||2),m=Number($('tldMR')?.value||100);$('tldA').textContent=a;$('tldB').textContent=b;$('tldM').textContent=m;$('tldBox').innerHTML=trackPanel(a,b,m)};
 function sectorDeepUnique(){return `<div class="deepExplain"><b>圓心角決定弧占整個圓周的比例</b><p>兩條直線都必須是半徑，且在圓心相遇，和中間那段弧一起才圍成扇形。</p></div><div id="sduBox">${sectorPanel(120,5)}</div><div class="dual"><label>圓心角＝<span id="sduA">120</span>°<input id="sduAR" type="range" min="30" max="330" step="30" value="120" oninput="updateSectorDeep()"></label><label>半徑＝<span id="sduR">5</span> cm<input id="sduRR" type="range" min="2" max="8" value="5" oninput="updateSectorDeep()"></label></div>`}
 window.updateSectorDeep=()=>{const a=Number($('sduAR')?.value||30),r=Number($('sduRR')?.value||2);$('sduA').textContent=a;$('sduR').textContent=r;$('sduBox').innerHTML=sectorPanel(a,r)};
+
+
+/* ---------- v0.6 deep visuals: units 6-10 ---------- */
+function fracBars(a,b,labelA,labelB){const W=470,x=70;return `<svg viewBox="0 0 650 250"><text x="55" y="30" font-size="18" font-weight="900">${labelA} 和 ${labelB}：先看每一份是不是同樣大</text><rect x="${x}" y="62" width="${W}" height="54" rx="8" fill="#f1f4fa" stroke="#bfcce0"/>${Array.from({length:a},(_,i)=>`<line x1="${x+i*W/a}" y1="62" x2="${x+i*W/a}" y2="116" stroke="#fff" stroke-width="3"/>`).join('')}<rect x="${x}" y="62" width="${W/a}" height="54" fill="#5e7fe0"/><text x="555" y="96" font-size="18">1/${a}</text><rect x="${x}" y="145" width="${W}" height="54" rx="8" fill="#f1f4fa" stroke="#bfcce0"/>${Array.from({length:b},(_,i)=>`<line x1="${x+i*W/b}" y1="145" x2="${x+i*W/b}" y2="199" stroke="#fff" stroke-width="3"/>`).join('')}<rect x="${x}" y="145" width="${W/b}" height="54" fill="#8a6fd9"/><text x="555" y="179" font-size="18">1/${b}</text><text x="70" y="232" font-size="15" font-weight="800">分母不同 → 每一份大小不同 → 不能直接把份數相加減</text></svg>`}
+function fracUnitDeep(){return `<div class="deepExplain"><b>先把「分母」當成切法</b><p>分母 2 是切成 2 份；分母 3 是切成 3 份。兩種「1 份」本來就不同大。</p></div>${fracBars(2,3,'1/2','1/3')}`}
+function fracCommonDeep(){return `<div class="deepExplain"><b>通分就是換成共同的小格子</b><p>1/3 和 1/4 都切成十二分之一後，就能在同一把尺上比較和運算。</p></div><svg viewBox="0 0 650 250"><text x="70" y="38" font-size="22" font-weight="900">1/3 ＝ 4/12　　1/4 ＝ 3/12</text>${[0,1].map((r)=>Array.from({length:12},(_,i)=>`<rect x="${70+i*40}" y="${70+r*80}" width="38" height="48" rx="3" fill="${i<(r?3:4)?(r?'#8b72df':'#5e7fe0'):'#eef2f8'}"/>`).join('')).join('')}<text x="70" y="228" font-size="16">共同分母 12：現在每一小格都代表 1/12。</text></svg>`}
+function fracAddStepsDeep(){return `<div class="stepEquation"><div><small>① 通分</small><b>2/3 ＋ 1/4</b></div><span>→</span><div><small>② 同單位</small><b>8/12 ＋ 3/12</b></div><span>→</span><div><small>③ 加份數</small><b>11/12</b></div></div>`}
+function fracSubStepsDeep(){return `<div class="stepEquation"><div><small>完整的 1</small><b>1 ＝ 8/8</b></div><span>→</span><div><small>減掉 3 份</small><b>8/8－3/8</b></div><span>→</span><div><small>剩下</small><b>5/8</b></div></div>`}
+function fracSimplifyDeep(){return `<svg viewBox="0 0 650 240"><text x="75" y="50" font-size="28" font-weight="900">4/6</text><text x="155" y="50" font-size="18">分子、分母都有公因數 2</text><path d="M120 70 C210 120 265 120 350 70" fill="none" stroke="#f0a33c" stroke-width="4"/><text x="175" y="118" font-size="18" font-weight="900">上下同除以 2</text><text x="300" y="180" font-size="34" font-weight="900" fill="#3157a7">2/3</text><text x="75" y="218" font-size="15">2 和 3 只剩公因數 1，所以 2/3 是最簡分數。</text></svg>`}
+function fracLifeDeep(){return `<div class="lifeEstimate"><div><span>3/5</span><small>已經大於一半</small></div><b>＋</b><div><span>1/4</span><small>再加四分之一</small></div><b>≈</b><div class="target"><span>接近 1</span><small>精算前先判斷範圍</small></div></div>`}
+function symMirrorDeep(){return `<svg viewBox="0 0 650 280"><rect x="315" y="30" width="20" height="210" rx="10" fill="#d7eef6"/><line x1="325" y1="30" x2="325" y2="240" stroke="#37677c" stroke-width="3" stroke-dasharray="8 6"/><path d="M160 90 Q210 40 260 90 Q230 135 260 185 Q205 225 160 180 Q190 135 160 90Z" fill="#6f8deb" opacity=".85"/><path d="M490 90 Q440 40 390 90 Q420 135 390 185 Q445 225 490 180 Q460 135 490 90Z" fill="#ff83a3" opacity=".8"/><text x="253" y="262" font-size="16" font-weight="900">沿鏡面對摺 → 左右完全重合</text></svg>`}
+function symDistanceDeep(){return symmetrySvg(4,0)}
+function symAxisDeep(){return `<svg viewBox="0 0 650 250"><circle cx="160" cy="125" r="10" fill="#4b73df"/><circle cx="490" cy="125" r="10" fill="#ff7295"/><line x1="160" y1="125" x2="490" y2="125" stroke="#e0a13b" stroke-width="4"/><line x1="325" y1="35" x2="325" y2="215" stroke="#3157a7" stroke-width="4" stroke-dasharray="8 6"/><path d="M325 125 h18 v-18" fill="none" stroke="#3157a7" stroke-width="3"/><text x="120" y="105" font-size="18">A</text><text x="505" y="105" font-size="18">A′</text><text x="245" y="235" font-size="16" font-weight="900">對稱軸垂直 AA′，而且把 AA′ 平分</text></svg>`}
+function symDrawDeep(){return `<div class="mirrorSteps big"><span>P</span><i>── 3 格 ──</i><b>│ 鏡面 │</b><i>── 3 格 ──</i><span>P′</span></div><p class="centerNote">從 P 到 P′ 一共跨 6 格；不是走 3 格停在鏡面。</p>`}
+function symAxesDeep(){return `<div class="shapeAxisCards"><div><span>△</span><b>正三角形</b><small>3 條</small></div><div><span>□</span><b>正方形</b><small>4 條</small></div><div><span>⬠</span><b>正五邊形</b><small>5 條</small></div><div><span>○</span><b>圓</b><small>無限多條</small></div></div>`}
+function symLifeDeep(){return `<div class="mirrorChecklist"><b>🪞 三步檢查生活圖案</b><span>① 找出一對對應點 A、A′</span><span>② 量兩點到中線的垂直距離是否相等</span><span>③ 檢查 AA′ 是否和中線成 90°</span></div>`}
+function opStructureDeep(){return `<div class="storyEquation"><span>3 盒彩筆</span><b>×</b><span>每盒 12 枝</span><b>＝</b><strong>36 枝</strong><small>「幾組相同數量」最適合用乘法。</small></div>`}
+function opOrderDeep(){return `<div class="orderLadder"><div class="on">① 括號（　）</div><div>② 乘 ×、除 ÷</div><div>③ 加 ＋、減 −</div><small>同一級運算，再由左往右。</small></div>`}
+function opParenthesesDeep(){return `<div class="compareCalc"><div><b>20－4×3</b><span>＝20－12＝8</span></div><strong>不一樣</strong><div><b>(20－4)×3</b><span>＝16×3＝48</span></div></div>`}
+function opLeftRightDeep(){return `<div class="flowCalc"><div>24 ÷ 6 × 2</div><span>同級，從左往右 ↓</span><div>4 × 2</div><strong>8</strong></div>`}
+function opDistributiveDeep(){return distributeLab()}
+function opLifeDeep(){return `<div class="receiptVisual"><div><b>預算 1000 元</b><span>書：4 本 × 120 元</span><i></i><strong>先算總價 480 元</strong></div><aside><b>再算剩餘</b><span>1000－480＝520</span><small>列式：1000－4×120</small></aside></div>`}
+function areaSquareDeep(){let cells='';for(let r=0;r<3;r++)for(let c=0;c<5;c++)cells+=`<rect x="${95+c*70}" y="${45+r*55}" width="66" height="51" fill="#eaf1ff" stroke="#7c94d8"/><text x="${123+c*70}" y="${77+r*55}" font-size="12">1</text>`;return `<svg viewBox="0 0 650 250">${cells}<text x="470" y="80" font-size="18" font-weight="900">5 欄 × 3 列</text><text x="470" y="120" font-size="25" font-weight="900">＝15</text><text x="470" y="155" font-size="14">平方單位</text><text x="95" y="230" font-size="15">面積是在數「這整塊面」可以放幾個 1×1 小正方形。</text></svg>`}
+function areaHeightDeep(){return `<svg viewBox="0 0 650 300"><line x1="80" y1="220" x2="555" y2="220" stroke="#52657c" stroke-width="3"/><polygon points="160,220 420,220 335,65" fill="#eef3ff" stroke="#5579df" stroke-width="4"/><line x1="335" y1="65" x2="335" y2="220" stroke="#e39435" stroke-width="5" stroke-dasharray="7 5"/><path d="M335 220 h20 v-20" fill="none" stroke="#e39435" stroke-width="3"/><text x="215" y="248" font-size="17" font-weight="900">底邊所在直線</text><text x="350" y="145" font-size="17" font-weight="900">高</text><text x="365" y="178" font-size="14">頂點 → 底所在直線</text><text x="365" y="202" font-size="14">必須 90° 垂直</text></svg>`}
+function areaParaDeep(){return `<svg viewBox="0 0 650 270"><polygon points="100,205 365,205 310,70 45,70" fill="#dfe9ff" stroke="#5579df" stroke-width="4"/><line x1="100" y1="205" x2="100" y2="70" stroke="#e79b39" stroke-width="4" stroke-dasharray="7 5"/><path d="M100 205 h18 v-18" fill="none" stroke="#e79b39" stroke-width="3"/><path d="M45 70 L100 205 L155 70" fill="#fff2d5" opacity=".85"/><text x="420" y="105" font-size="18" font-weight="900">剪左角 → 搬到右側</text><text x="420" y="145" font-size="17">變成同底同高長方形</text><text x="420" y="190" font-size="22" font-weight="900">面積＝底×高</text></svg>`}
+function areaTriangleDeep(){return `<svg viewBox="0 0 650 270"><polygon points="80,210 340,210 250,60" fill="#dff3e8" stroke="#3a9567" stroke-width="4"/><polygon points="340,210 510,60 250,60" fill="#eef8f2" stroke="#3a9567" stroke-width="3" stroke-dasharray="7 5"/><text x="95" y="245" font-size="15">一個三角形</text><text x="380" y="120" font-size="15">＋另一個全等三角形</text><text x="380" y="165" font-size="20" font-weight="900">→ 平行四邊形</text><text x="380" y="205" font-size="18">所以一個只占一半</text></svg>`}
+function areaExtensionDeep(){return `<svg viewBox="0 0 650 300"><line x1="65" y1="220" x2="560" y2="220" stroke="#58687d" stroke-width="3" stroke-dasharray="8 5"/><polygon points="220,220 480,220 125,70" fill="#fff0dd" stroke="#d88b37" stroke-width="4"/><line x1="125" y1="70" x2="125" y2="220" stroke="#d94f61" stroke-width="5"/><path d="M125 220 h20 v-20" fill="none" stroke="#d94f61" stroke-width="3"/><text x="70" y="250" font-size="15" font-weight="900">← 底邊延長線</text><text x="145" y="145" font-size="16" font-weight="900">高在圖形外</text><text x="355" y="267" font-size="14">底本身只到三角形邊，但「底所在直線」可以延長。</text></svg>`}
+function areaTrapezoidDeep(){return `<svg viewBox="0 0 650 280"><polygon points="80,210 330,210 285,80 145,80" fill="#eaf1ff" stroke="#5579df" stroke-width="4"/><polygon points="330,210 500,210 435,80 285,80" fill="#fff1d7" stroke="#d89939" stroke-width="3" stroke-dasharray="6 4"/><text x="80" y="245" font-size="15">梯形 A</text><text x="355" y="245" font-size="15">＋ 梯形 B（全等）</text><text x="360" y="105" font-size="17" font-weight="900">兩個拼成平行四邊形</text><text x="360" y="145" font-size="16">底＝上底＋下底</text><text x="360" y="180" font-size="16">高不變</text><text x="360" y="215" font-size="18" font-weight="900">原梯形要 ÷2</text></svg>`}
+function areaLifeDeep(){return `<div class="mirrorChecklist"><b>🌱 生活面積題 4 步</b><span>① 先辨認平行四邊形／三角形／梯形</span><span>② 圈出選定的底</span><span>③ 畫出和底成 90° 的高（必要時延長底）</span><span>④ 算面積並寫平方單位</span></div>`}
+function solidVocabDeep(){return `<svg viewBox="0 0 650 285"><polygon points="160,70 330,70 395,125 225,125" fill="#eaf1ff" stroke="#5579df" stroke-width="3"/><polygon points="225,125 395,125 395,230 225,230" fill="#dfe8ff" stroke="#5579df" stroke-width="3"/><polygon points="330,70 395,125 395,230 330,175" fill="#cddcff" stroke="#5579df" stroke-width="3"/><circle cx="395" cy="125" r="6" fill="#d95061"/><line x1="395" y1="125" x2="510" y2="78" stroke="#d95061"/><text x="520" y="80" font-size="15">頂點</text><line x1="395" y1="180" x2="510" y2="180" stroke="#e09b39"/><text x="520" y="184" font-size="15">稜</text><text x="250" y="180" font-size="20" font-weight="900">面</text></svg>`}
+function solidPrismDeep(){return `<div class="solidCompare"><div>${solidSvg('prism',5,5,0)}<b>角柱</b><span>兩個平行全等的多邊形底面</span></div><div><strong>共同規則</strong><p>底面形狀決定名字；兩個底面大小形狀相同，而且彼此平行。</p></div></div>`}
+function solidPyramidDeep(){return `<div class="solidCompare"><div>${solidSvg('pyramid',5,5,0)}<b>角錐</b><span>一個多邊形底面＋一個錐頂</span></div><div><strong>看側面</strong><p>角錐的側面是三角形，全部向同一個頂點集中。</p></div></div>`}
+function solidRoundDeep(){return `<div class="roundSolidCards"><div>${solidSvg('cylinder',5,4,0)}<b>圓柱</b><small>2 個圓底面・無錐頂</small></div><div>${solidSvg('cone',5,4,0)}<b>圓錐</b><small>1 個圓底面・1 個頂點</small></div></div>`}
+function solidSphereDeep(){return `<div class="solidCompare"><div>${solidSvg('sphere',5,5,0)}</div><div><strong>球的三個「沒有」</strong><p>沒有平面底面<br>沒有稜<br>沒有頂點</p><small>整個表面都是曲面。</small></div></div>`}
+function solidLifeDeep(){return `<div class="shapeAxisCards solidLifeCards"><div><span>🥫</span><b>罐頭</b><small>圓柱</small></div><div><span>🎉</span><b>生日帽</b><small>圓錐</small></div><div><span>⚽</span><b>足球</b><small>球</small></div><div><span>🎲</span><b>骰子</b><small>正方體</small></div></div><p class="centerNote">不要只說「長得像」，要再說出底面、曲面、稜或頂點的理由。</p>`}

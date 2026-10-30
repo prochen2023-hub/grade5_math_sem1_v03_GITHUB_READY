@@ -33,8 +33,12 @@ jobs:
         run: node scripts/smoke_test.js
       - name: Test diagram logic
         run: node scripts/interaction_test.js
-      - name: Test v0.5 first-five deep content
-        run: python scripts/v05_content_test.py
+      - name: Test v0.7 child adventure flow
+        run: python scripts/v07_content_test.py
+      - name: Test A/B monthly exam shell
+        run: node scripts/exam_test.js
+      - name: Check JavaScript syntax
+        run: node --check assets/js/app.js && node --check assets/js/voice.js
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

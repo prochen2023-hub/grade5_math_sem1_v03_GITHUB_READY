@@ -33,4 +33,10 @@ assert(ctx.specialTriPanel('isosceles',40).includes('70°'),'isosceles angle cal
 assert(ctx.parallelogramPanel(70).includes('110°'),'parallelogram adjacent-angle calculation failed');
 assert(ctx.trapezoidPanel(72,'general').includes('108°'),'trapezoid same-leg supplementary angles failed');
 for(let i=0;i<12;i++) assert(ctx.angleDiagram(i).includes('<svg'),`mixed-angle diagram ${i+1} missing`);
-console.log('INTERACTION TEST OK: v0.5 concept diagrams and calculations');
+assert(ctx.fracUnitDeep().includes('分母不同'),'u06 fraction-unit visual failed');
+assert(ctx.fracCommonDeep().includes('4/12'),'u06 common denominator visual failed');
+assert(ctx.symAxisDeep().includes('垂直')&&ctx.symAxesDeep().includes('正五邊形'),'u07 symmetry deep visuals failed');
+assert(ctx.opParenthesesDeep().includes('48')&&ctx.opLeftRightDeep().includes('8'),'u08 operation-order visual failed');
+assert(ctx.areaHeightDeep().includes('90°')&&ctx.areaExtensionDeep().includes('延長線'),'u09 height/extension visual failed');
+assert(ctx.solidSphereDeep().includes('沒有稜')&&ctx.solidRoundDeep().includes('圓柱'),'u10 solid deep visuals failed');
+console.log('INTERACTION TEST OK: v0.7 concept diagrams and calculations');
